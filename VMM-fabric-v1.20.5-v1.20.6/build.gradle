@@ -1,0 +1,199 @@
+plugins {
+    id 'fabric-loom' version '1.14-SNAPSHOT'
+    id 'maven-publish'
+}
+
+def supportedMinecraftVersions = [
+        "1.20.5": [
+                minecraft: "1.20.5",
+                yarn     : "1.20.5+build.1",
+                loader   : "0.17.3",
+                fabric   : "0.97.8+1.20.5"
+        ],
+        "1.20.6": [
+                minecraft: "1.20.6",
+                yarn     : "1.20.6+build.1",
+                loader   : "0.17.3",
+                fabric   : "0.100.8+1.20.6"
+        ]
+]
+
+def normalizeVersion = { raw ->
+    if (raw == null) {
+        return null
+    }
+    def candidate = raw.toString().trim()
+    def matcher = candidate =~ /(\d+)[^\d]+(\d+)[^\d]+(\d+)/
+    if (matcher.find()) {
+        return "${matcher.group(1)}.${matcher.group(2)}.${matcher.group(3)}"
+    }
+    def dotted = candidate =~ /(\d+\.\d+\.\d+)/
+    return dotted.find() ? dotted.group(1) : candidate
+}
+
+def versionCandidatesRaw = [
+        System.getProperty("org.gradle.project.minecraft_target"),
+        System.getProperty("minecraft_target"),
+        gradle.startParameter.projectProperties["minecraft_target"],
+        project.findProperty("minecraft_target"),
+        System.getenv("MINECRAFT_TARGET") ?: System.getenv("minecraft_target"),
+        project.findProperty("minecraft_version"),
+        supportedMinecraftVersions.keySet().last()
+]
+def normalizedCandidates = versionCandidatesRaw.collect { normalizeVersion(it) }
+def targetMinecraftVersion = null
+for (def candidate : normalizedCandidates) {
+    if (candidate == null) {
+        continue
+    }
+    def candidateKey = candidate.toString()
+    if (supportedMinecraftVersions.containsKey(candidateKey)) {
+        targetMinecraftVersion = candidateKey
+        break
+    }
+}
+
+logger.lifecycle("Version candidates (raw): ${versionCandidatesRaw}")
+logger.lifecycle("Version candidates (normalized): ${normalizedCandidates}")
+logger.lifecycle("Resolved target minecraft version: ${targetMinecraftVersion}")
+logger.lifecycle("Gradle project properties: ${gradle.startParameter.projectProperties}")
+
+if (!targetMinecraftVersion) {
+    throw new GradleException("Unsupported Minecraft version. Candidates: ${versionCandidatesRaw}. Supported versions: ${supportedMinecraftVersions.keySet().join(', ')}")
+}
+
+if (!supportedMinecraftVersions.containsKey(targetMinecraftVersion)) {
+    throw new GradleException("Unsupported Minecraft version: ${targetMinecraftVersion}. Supported versions: ${supportedMinecraftVersions.keySet().join(', ')}")
+}
+
+def versionConfig = supportedMinecraftVersions[targetMinecraftVersion]
+ext.set("minecraft_version", versionConfig.minecraft)
+ext.set("yarn_mappings", versionConfig.yarn)
+ext.set("loader_version", versionConfig.loader)
+ext.set("fabric_version", versionConfig.fabric)
+logger.lifecycle("Building Veinminer for Minecraft {}", targetMinecraftVersion)
+
+version = "${project.mod_version}+mc${targetMinecraftVersion}"
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+
+fabricApi {
+    configureDataGeneration {
+        client = true
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // To change the versions see the gradle.properties file
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    implementation 'com.electronwill.night-config:core:3.8.0'
+    implementation 'com.electronwill.night-config:toml:3.8.0'
+    include 'com.electronwill.night-config:core:3.8.0'
+    include 'com.electronwill.night-config:toml:3.8.0'
+
+    implementation 'com.google.code.gson:gson:2.11.0'
+    include 'com.google.code.gson:gson:2.11.0'
+
+    compileOnly 'net.luckperms:api:5.4'
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "loader_version", project.loader_version
+    filteringCharset "UTF-8"
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+                "minecraft_version": project.minecraft_version,
+                "loader_version": project.loader_version
+    }
+}
+
+def targetJavaVersion = 21
+tasks.withType(JavaCompile).configureEach {
+    // ensure that the encoding is set to UTF-8, no matter what the system default is
+    // this fixes some edge cases with special characters not displaying correctly
+    // see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
+    // If Javadoc is generated, this must be specified in that task too.
+    it.options.encoding = "UTF-8"
+    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
+        it.options.release.set(targetJavaVersion)
+    }
+}
+
+java {
+    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+    if (JavaVersion.current() < javaVersion) {
+        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+    // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+    // if it is present.
+    // If you remove this line, sources will not be generated.
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${archiveBaseName.get()}" }
+    }
+}
+
+// configure the maven publication
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+
+    // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+    repositories {
+        // Add repositories to publish to here.
+        // Notice: This block does NOT have the same function as the block in the top level.
+        // The repositories here will be used for publishing your artifact, not for
+        // retrieving dependencies.
+    }
+}
+
+def isWindows = System.getProperty("os.name").toLowerCase(Locale.ENGLISH).contains("win")
+def gradlewCommand = isWindows ? ["cmd.exe", "/c", "gradlew.bat"] : ["./gradlew"]
+def commonGradleArgs = ["--console=plain", "--no-daemon"]
+
+def buildVariantTasks = []
+supportedMinecraftVersions.keySet().each { versionKey ->
+    def taskSuffix = versionKey.replace('.', '_')
+    def taskName = "buildFor${taskSuffix}"
+    tasks.register(taskName, Exec) {
+        group = "build"
+        description = "Builds the mod for Minecraft ${versionKey}."
+        workingDir = rootDir
+        // Do not clean between variants so earlier jars remain on disk.
+        commandLine(gradlewCommand + ["build"] + commonGradleArgs + ["-Pminecraft_target=${versionKey}"])
+    }
+    buildVariantTasks << taskName
+}
+
+tasks.register("buildAllSupported") {
+    group = "build"
+    description = "Builds the mod for all supported Minecraft versions."
+    dependsOn buildVariantTasks
+    doLast {
+        logger.lifecycle("Built targets: {}", supportedMinecraftVersions.keySet().join(", "))
+    }
+}
+

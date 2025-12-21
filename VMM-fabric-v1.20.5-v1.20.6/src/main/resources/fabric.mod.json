@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "veinminermod",
+  "version": "${version}",
+  "name": "Veinminer",
+  "description": "Veinminer rebuilt with a focus on maintainability, extensibility, and cleaner internals.",
+  "authors": [
+    "SGTSambam"
+  ],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/veinminermod/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.sheath.veinminer.Veinminer"
+    ],
+    "client": [
+      "com.sheath.veinminer.client.VeinminerClient"
+    ],
+    "fabric-datagen": [
+      "com.sheath.veinminer.datagen.VeinminerDataGenerator"
+    ]
+  },
+  "mixins": [
+    "veinminermod.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  },
+  "suggests": {
+    "luckperms": "5.4"
+  }
+}

@@ -1,0 +1,255 @@
+import java.time.Duration
+import java.util.Locale
+
+buildscript {
+    repositories {
+        mavenLocal()
+        maven {
+            name = "NeoForge"
+            url = "https://maven.neoforged.net/releases"
+        }
+        maven {
+            name = "Mojang"
+            url = "https://libraries.minecraft.net/"
+        }
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath "net.neoforged:moddev-gradle:2.0.6-beta"
+    }
+}
+
+plugins {
+    id 'java'
+    id 'idea'
+    id 'eclipse'
+    id 'maven-publish'
+}
+
+apply plugin: 'net.neoforged.moddev'
+apply plugin: 'net.neoforged.moddev.repositories'
+
+def supportedNeoForgeTargets = [
+        "1.20.6": [
+                minecraft: "1.20.6",
+                neoforge : "20.6.139"
+        ]
+]
+
+def parseVersion = { String v -> v.split('\\.').collect { it as int } }
+// Version-aware sorting so 1.21.10 is treated as newer than 1.21.9.
+def sortedTargets = supportedNeoForgeTargets.keySet().toList().sort { a, b ->
+    def pa = parseVersion(a)
+    def pb = parseVersion(b)
+    def maxSize = Math.max(pa.size(), pb.size())
+    for (int i = 0; i < maxSize; i++) {
+        def ai = i < pa.size() ? pa[i] : 0
+        def bi = i < pb.size() ? pb[i] : 0
+        if (ai != bi) {
+            return ai <=> bi
+        }
+    }
+    return 0
+}
+
+// Accept dot/underscore/hyphen separated versions and pick the first candidate that matches our support matrix.
+def normalizeVersion = { raw ->
+    if (raw == null) {
+        return null
+    }
+    def candidate = raw.toString().trim()
+    def matcher = candidate =~ /(\d+)[^\d]+(\d+)[^\d]+(\d+)/
+    if (matcher.find()) {
+        return "${matcher.group(1)}.${matcher.group(2)}.${matcher.group(3)}"
+    }
+    def dotted = candidate =~ /(\d+\.\d+\.\d+)/
+    return dotted.find() ? dotted.group(1) : candidate
+}
+
+def versionCandidatesRaw = [
+        gradle.startParameter.projectProperties["minecraft_target"],
+        System.getenv("MINECRAFT_TARGET") ?: System.getenv("minecraft_target"),
+        project.findProperty("minecraft_target"),
+        project.findProperty("minecraft_version"),
+        sortedTargets.last()
+]
+def normalizedCandidates = versionCandidatesRaw.collect { normalizeVersion(it) }
+def targetMinecraftVersion = null
+for (def candidate : normalizedCandidates) {
+    if (candidate == null) {
+        continue
+    }
+    def key = candidate.toString()
+    if (supportedNeoForgeTargets.containsKey(key)) {
+        targetMinecraftVersion = key
+        break
+    }
+}
+
+logger.lifecycle("Version candidates (raw): ${versionCandidatesRaw}")
+logger.lifecycle("Version candidates (normalized): ${normalizedCandidates}")
+logger.lifecycle("Resolved target minecraft version: ${targetMinecraftVersion}")
+
+if (!targetMinecraftVersion) {
+    throw new GradleException("Unsupported Minecraft version. Candidates: ${versionCandidatesRaw}. Supported versions: ${supportedNeoForgeTargets.keySet().join(', ')}")
+}
+
+if (!supportedNeoForgeTargets.containsKey(targetMinecraftVersion)) {
+    throw new GradleException("Unsupported Minecraft version: ${targetMinecraftVersion}. Supported versions: ${supportedNeoForgeTargets.keySet().join(', ')}")
+}
+
+def versionConfig = supportedNeoForgeTargets[targetMinecraftVersion]
+project.extensions.extraProperties.set("minecraft_version", versionConfig.minecraft)
+project.extensions.extraProperties.set("neoforge_version", versionConfig.neoforge)
+project.extensions.extraProperties.set("minecraft_dependency_range", "[${versionConfig.minecraft},${versionConfig.minecraft}]")
+project.extensions.extraProperties.set("neoforge_dependency_range", "[${versionConfig.neoforge},)")
+
+logger.lifecycle("Building Veinminer for Minecraft {} using NeoForge {}", versionConfig.minecraft, versionConfig.neoforge)
+
+version = "${project.mod_version}+mc${targetMinecraftVersion}"
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    withSourcesJar()
+}
+
+repositories {
+    mavenLocal()
+    maven {
+        name = "NeoForge"
+        url = "https://maven.neoforged.net/releases"
+    }
+    maven {
+        name = "Mojang"
+        url = "https://libraries.minecraft.net/"
+    }
+    mavenCentral()
+}
+
+dependencies {
+    implementation "net.neoforged:neoforge:${project.neoforge_version}"
+
+    implementation 'com.electronwill.night-config:core:3.8.0'
+    implementation 'com.electronwill.night-config:toml:3.8.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    compileOnly 'net.luckperms:api:5.4'
+}
+
+neoForge {
+    version = project.neoforge_version
+
+    runs {
+        client {
+            client()
+            gameDirectory = layout.projectDirectory.dir("run/client")
+            systemProperty 'forge.logging.console.level', 'debug'
+            mods {
+                "${project.mod_id}" {
+                    sourceSet sourceSets.main
+                }
+            }
+        }
+        server {
+            server()
+            gameDirectory = layout.projectDirectory.dir("run/server")
+            systemProperty 'forge.logging.console.level', 'info'
+            mods {
+                "${project.mod_id}" {
+                    sourceSet sourceSets.main
+                }
+            }
+        }
+        data {
+            data()
+            gameDirectory = layout.projectDirectory.dir("run/data")
+            programArgument "--mod"
+            programArgument project.mod_id
+            programArgument "--all"
+            programArgument "--output"
+            programArgument file('src/generated/resources').absolutePath
+            mods {
+                "${project.mod_id}" {
+                    sourceSet sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+sourceSets.main.resources {
+    srcDir 'src/generated/resources'
+    exclude '.cache/'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+processResources {
+    inputs.property 'version', project.version
+    inputs.property 'minecraft_version', project.minecraft_version
+    inputs.property 'neoforge_version', project.neoforge_version
+    inputs.property 'minecraft_dependency_range', project.minecraft_dependency_range
+    inputs.property 'neoforge_dependency_range', project.neoforge_dependency_range
+
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(
+                version: project.version,
+                minecraft_version: project.minecraft_version,
+                neoforge_version: project.neoforge_version,
+                minecraft_dependency_range: project.minecraft_dependency_range,
+                neoforge_dependency_range: project.neoforge_dependency_range
+        )
+    }
+}
+
+jar {
+    from('LICENSE.txt') {
+        rename { "${it}_${archiveBaseName.get()}" }
+    }
+}
+
+def isWindows = System.getProperty("os.name").toLowerCase(Locale.ENGLISH).contains("win")
+def gradlewCommand = isWindows ? ["cmd.exe", "/c", "gradlew.bat"] : ["./gradlew"]
+def commonGradleArgs = ["--console=plain", "--no-daemon"]
+def buildTimeout = Duration.ofMinutes(20)
+
+supportedNeoForgeTargets.keySet().each { versionKey ->
+    def taskSuffix = versionKey.replace('.', '_')
+    def propArg = "-Pminecraft_target=${versionKey.replace('.', '_')}"
+    tasks.register("buildFor${taskSuffix}", Exec) {
+        group = "build"
+        description = "Builds the NeoForge mod for Minecraft ${versionKey}."
+        workingDir = rootDir
+        commandLine(gradlewCommand + ["build"] + commonGradleArgs + [propArg])
+        timeout = buildTimeout
+    }
+}
+
+tasks.register("buildAllSupported") {
+    group = "build"
+    description = "Builds the NeoForge mod for all supported Minecraft versions."
+    dependsOn supportedNeoForgeTargets.keySet().collect { versionKey ->
+        def taskSuffix = versionKey.replace('.', '_')
+        "buildFor${taskSuffix}"
+    }
+}
+
+publishing {
+    publications {
+        create('mavenJava', MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+}
+

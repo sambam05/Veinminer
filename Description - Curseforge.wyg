@@ -1,0 +1,175 @@
+<h1>Veinminer</h1>
+<p><strong>Veinminer</strong> is a configurable mining mod that lets you break entire veins with a single block break. It keeps the grind down while giving server owners clear controls, limits, and permissions. Works server-side out of the box; the optional client mod adds a keybind (default V).</p>
+
+<hr />
+
+<h2>Key Features</h2>
+<ul>
+  <li><strong>Vein Mining</strong> - mines adjacent matching blocks with TPS-aware block caps.</li>
+  <li><strong>Activation Choices</strong> - crouch or hotkey; hold or toggle modes per player.</li>
+  <li><strong>Empty-Hand Support</strong> - trigger without holding a tool (optional).</li>
+  <li><strong>Flexible Block Lists</strong> - global and per-tool lists can be whitelist or blacklist.</li>
+  <li><strong>Per-Tool Rules</strong> - different block sets per tool; seeded defaults.</li>
+  <li><strong>Fortune/Silk &amp; Durability Safety</strong> - honors enchants; optional durability guard.</li>
+  <li><strong>Cooldown &amp; Limits</strong> - optional cooldown; static or dynamic max blocks.</li>
+  <li><strong>Particles/Outline</strong> - server-driven outline with color + duration controls.</li>
+  <li><strong>Hunger/Exhaustion Cost</strong> - optional hunger exhaustion with a configurable multiplier (off by default).</li>
+  <li><strong>Setup Wizard + Login Prompt</strong> - admin-only clickable wizard; admins are prompted on join until they click Yes/No (then never again).</li>
+  <li><strong>LuckPerms Toggle</strong> - optional integration for permissions.</li>
+  <li><code>/veinminer test</code> - quick command to verify behavior and responses.</li>
+  <li><strong>Live Reloads</strong> - <code>/veinminer reload</code> with file/line reporting on errors.</li>
+</ul>
+
+<hr />
+
+<h2>Configuration &amp; Commands</h2>
+<h3>Command quick reference</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Command</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>/veinminer</code></td><td>Show overview help.</td></tr>
+    <tr><td><code>/veinminer help [topic]</code></td><td>Show a specific help page.</td></tr>
+    <tr><td><code>/veinminer toggle</code></td><td>Toggle Veinminer for yourself (per-player).</td></tr>
+    <tr><td><code>/veinminer toggleparticles</code></td><td>Toggle particles for you (per-player).</td></tr>
+    <tr><td><code>/veinminer togglemessages &lt;permission|disabled|cooldown|durability&gt;</code></td><td>Toggle specific chat notifications (per-player).</td></tr>
+    <tr><td><code>/veinminer activation mode hold</code> / <code>toggle</code></td><td>Choose hold vs toggle activation (per-player).</td></tr>
+    <tr><td><code>/veinminer activation keybind enable</code> / <code>disable</code></td><td>Allow/deny keybind activation (client required).</td></tr>
+    <tr><td><code>/veinminer blocks add/remove/list/clear &lt;block_id|#tag&gt;</code></td><td>Manage the global block list (admin/manage).</td></tr>
+    <tr><td><code>/veinminer tools add/remove/list/clear &lt;item_id|#tag|hand&gt;</code></td><td>Manage allowed tools (admin/manage).</td></tr>
+    <tr><td><code>/veinminer blockpertool tool add/remove/list/clear &lt;tool|#tag|hand&gt;</code></td><td>Manage tools in per-tool mode (admin/manage).</td></tr>
+    <tr><td><code>/veinminer blockpertool blocks &lt;tool&gt; add/remove/list/clear &lt;block_id|#tag&gt;</code></td><td>Manage per-tool block lists (admin/manage).</td></tr>
+    <tr><td><code>/veinminer setup</code></td><td>Interactive setup wizard with clickable steps (admin/manage).</td></tr>
+    <tr><td><code>/veinminer settings blockpertool</code></td><td>Toggle per-tool block list mode (admin/manage).</td></tr>
+    <tr><td><code>/veinminer settings blocklistmode whitelist</code> / <code>blacklist</code></td><td>Switch whitelist/blacklist behavior (admin/manage).</td></tr>
+    <tr><td><code>/veinminer settings maxblocks &lt;value&gt;</code></td><td>Set max blocks per activation (admin/manage).</td></tr>
+    <tr><td><code>/veinminer settings cooldown enable</code> / <code>disable</code></td><td>Toggle cooldown (admin/manage).</td></tr>
+    <tr><td><code>/veinminer settings cooldown set &lt;seconds&gt;</code></td><td>Set cooldown duration (admin/manage).</td></tr>
+    <tr><td><code>/veinminer settings exhaustion enable</code> / <code>disable</code></td><td>Toggle hunger exhaustion (admin/manage).</td></tr>
+    <tr><td><code>/veinminer settings exhaustion scale &lt;value&gt;</code></td><td>Set hunger exhaustion multiplier (1.0 = vanilla per block).</td></tr>
+    <tr><td><code>/veinminer particles toggle</code></td><td>Toggle outline particles globally (admin/manage).</td></tr>
+    <tr><td><code>/veinminer particles setcolor &lt;r&gt; &lt;g&gt; &lt;b&gt;</code></td><td>Set outline RGB color (admin/manage).</td></tr>
+    <tr><td><code>/veinminer particles setduration &lt;ticks&gt;</code></td><td>Set outline lifetime (admin/manage).</td></tr>
+    <tr><td><code>/veinminer reload</code></td><td>Reload configs from disk (admin/manage).</td></tr>
+    <tr><td><code>/veinminer test</code></td><td>Run the built-in feature test harness (admin/manage).</td></tr>
+  </tbody>
+</table>
+
+<h3>Config files</h3>
+<p>Written to <code>config/Veinminer/</code> (TOML) on first run.</p>
+<ul>
+  <li><code>GeneralConfig.toml</code> - feature toggles, activation rules, block limits, particles, cooldown, exhaustion, integration options.</li>
+  <li><code>ToolsList.toml</code> - which tools can veinmine (plus optional <code>hand</code>).</li>
+  <li><code>BlocksList.toml</code> - global block list (whitelist/blacklist depending on mode).</li>
+  <li><code>BlockPerToolList.toml</code> - per-tool block lists (used when per-tool mode is enabled).</li>
+</ul>
+
+<h4>GeneralConfig.toml (important keys)</h4>
+<pre><code>[General]
+veinminerEnabled = true
+requireCrouch = true
+checkToolDurability = true
+durabilityCap = 1
+durabilityThreshold = "ABSOLUTE"
+
+[Cooldown]
+enabled = false
+seconds = 5
+
+[BlockLimits]
+dynamicMaxBlocks = false
+maxBlocks = 64
+minBlocks = 16
+maxDynamicBlocks = 64
+
+[Particles]
+enabled = true
+durationTicks = 60
+red = 255
+green = 0
+blue = 0
+
+[Exhaustion]
+enabled = false
+scale = 1.0</code></pre>
+
+<hr />
+
+<h2>Permissions</h2>
+<p><strong>General</strong></p>
+<ul>
+  <li><code>veinminer.use</code></li>
+  <li><code>veinminer.reload</code></li>
+  <li><code>veinminer.settings.manage</code></li>
+  <li><code>veinminer.*</code></li>
+</ul>
+<p><strong>Blocks</strong></p>
+<ul>
+  <li><code>veinminer.blocks.manage</code></li>
+  <li><code>veinminer.blocks.add</code></li>
+  <li><code>veinminer.blocks.remove</code></li>
+  <li><code>veinminer.blocks.list</code></li>
+  <li><code>veinminer.blocks.*</code></li>
+</ul>
+<p><strong>Tools</strong></p>
+<ul>
+  <li><code>veinminer.tools.manage</code></li>
+  <li><code>veinminer.tools.add</code></li>
+  <li><code>veinminer.tools.remove</code></li>
+  <li><code>veinminer.tools.list</code></li>
+  <li><code>veinminer.tools.*</code></li>
+</ul>
+<p><strong>Per-Tool</strong></p>
+<ul>
+  <li><code>veinminer.blockpertool.manage</code></li>
+  <li><code>veinminer.blockpertool.blocks.add|remove|list</code></li>
+  <li><code>veinminer.blockpertool.tools.add|remove|list</code></li>
+  <li><code>veinminer.blockpertool.blocks.*</code>, <code>veinminer.blockpertool.tools.*</code></li>
+</ul>
+<p><strong>Particles</strong></p>
+<ul>
+  <li><code>veinminer.particles.manage</code></li>
+  <li><code>veinminer.particles.enable</code>, <code>veinminer.particles.disable</code></li>
+  <li><code>veinminer.particles.setcolor</code>, <code>veinminer.particles.setduration</code></li>
+</ul>
+
+<hr />
+
+<h2>Compatibility</h2>
+<ul>
+  <li>Minecraft 1.20.x - 1.21.x</li>
+  <li>Fabric builds available</li>
+  <li>NeoForge builds available</li>
+  <li>Works on dedicated servers and single-player (integrated server)</li>
+  <li>No Forge builds planned</li>
+</ul>
+
+<hr />
+
+<h2>Client Optional</h2>
+<p>Installing the client build enables the hotkey and sends key state to the server. Default key: <strong>V</strong>.</p>
+<p>Without the client, crouch-to-activate is available via <code>requireCrouch</code> for a vanilla-only experience.</p>
+
+<hr />
+
+<h2>Installation</h2>
+<ol>
+  <li>Download the latest build for your platform.</li>
+  <li>Drop the jar in <code>/mods</code>.</li>
+  <li>Restart the server or client.</li>
+  <li>Configure with commands or edit the TOML files.</li>
+</ol>
+
+<hr />
+
+<h2>Support</h2>
+<p>Discord: <a href="https://discord.gg/43nu6wSWRC">https://discord.gg/43nu6wSWRC</a></p>
+
+<hr />
+
+<h2>Other Projects</h2>
+<p><strong>Hammer Mining</strong> - 3x3 breaking via enchant.</p>
