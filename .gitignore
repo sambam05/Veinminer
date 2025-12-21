@@ -8,6 +8,13 @@ build-logs/
 .gradle/
 .tmp/
 
+# Local helpers
+build-all.bat
+build-fabric.bat
+build-neoforge.bat
+fabric-metadata.xml
+temp.html
+
 # IDE/Editors
 .idea/
 .vscode/
