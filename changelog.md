@@ -9,6 +9,8 @@
 ### **Changes:**
 - `/veinminer settings` output now shows exhaustion enabled + scale.
 - Added `/veinminer help setup` topic entry.
+- Setup wizard UI restyled (colored headers/buttons, spaced nav row) and clears chat between steps; durability guard and particles now use multi-step flows (enable -> mode/value and enable -> duration/color).
+- Block list mode buttons/command remain `whitelist`/`blacklist`, but now honor the separate block-per-tool toggle: config writes `blockListMode = "WHITELIST|BLACKLIST"` plus `blocksPerTool = true|false` and still loads legacy `GLOBAL_*`/`PER_TOOL_*` values.
 
 ### **Fixes:**
 - N/A

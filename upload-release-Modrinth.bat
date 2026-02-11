@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 REM === Configuration ===
-REM Required values (pre-set below; override by exporting before calling):
+REM Required values (set in environment before calling):
 REM   MODRINTH_TOKEN
 REM   MODRINTH_PROJECT_ID
 REM Optional environment variables:
@@ -17,9 +17,11 @@ REM The script scans dist-neoforge and dist-fabric for *.jar, parses the name
 REM Veinminer-<loader>-<modVersion>+mc<mcVersion>.jar, then posts each file to
 REM Modrinth using the provided token and changelog.
 
-REM Pre-set release dry-run defaults
-if not defined MODRINTH_VERSION_TYPE set "MODRINTH_VERSION_TYPE=release"
+REM Pre-set release defaults (non-secret)
+if not defined MODRINTH_PROJECT_ID set "MODRINTH_PROJECT_ID=MnavVAzj"
+if not defined MODRINTH_VERSION_TYPE set "MODRINTH_VERSION_TYPE=beta"
 if not defined DRY_RUN set "DRY_RUN="
+if not defined KEEP_JSON set "KEEP_JSON=1"
 if not defined CHANGELOG_FILE set "CHANGELOG_FILE=C:\Programming\VMM Rebuild\changelog.md"
 if not defined UPLOAD_LIMIT set "UPLOAD_LIMIT="
 set "TARGET_UPLOADS=both"
@@ -29,8 +31,17 @@ if "%CHANGELOG_FILE%"=="" set "CHANGELOG_FILE=%ROOT%changelog.md"
 if "%MODRINTH_VERSION_TYPE%"=="" set "MODRINTH_VERSION_TYPE=release"
 if "%MODRINTH_FEATURED%"=="" set "MODRINTH_FEATURED=false"
 
-set "NEO_VERSIONS=1.21 1.21.1 1.21.2 1.21.3 1.21.4 1.21.5 1.21.6 1.21.7 1.21.8 1.21.9 1.21.10"
-set "FAB_VERSIONS=1.20 1.20.1 1.20.2 1.20.3 1.20.4 1.20.5 1.20.6 1.21 1.21.1 1.21.2 1.21.3 1.21.4 1.21.5 1.21.6 1.21.7 1.21.8 1.21.9 1.21.10"
+REM Load supported upload versions from shared metadata.
+call "%ROOT%version-metadata.bat" upload
+if errorlevel 1 goto :finish
+if not defined NEO_VERSIONS (
+    echo [error] NEO_VERSIONS was not provided by version-metadata.bat
+    goto :finish
+)
+if not defined FAB_VERSIONS (
+    echo [error] FAB_VERSIONS was not provided by version-metadata.bat
+    goto :finish
+)
 
 where curl >nul 2>nul
 if errorlevel 1 (
@@ -77,6 +88,13 @@ call :chooseTargets
 if errorlevel 1 goto :finish
 
 echo Using changelog from "%CHANGELOG_FILE%"
+if defined UPLOAD_LIMIT (
+    if "!UPLOAD_LIMIT!"=="" (
+        echo [info] Upload limit: unlimited
+    ) else (
+        echo [info] Upload limit: !UPLOAD_LIMIT!
+    )
+)
 echo.
 if defined PROCESS_NEOFORGE (
     call :processList dist-neoforge "!NEO_VERSIONS!"
@@ -167,18 +185,23 @@ set "VERSION_NUMBER=!MOD_VERSION!+!MC_VERSION!"
 set "DISPLAY_NAME=!MOD_NAME! !MC_VERSION! (!LOADER!)"
 
 echo === Publishing "!FILE!" ===
+echo [info] Request JSON will be written to: %TEMP%\mr_data_*.json
 call :uploadModrinth
 if errorlevel 1 exit /b 1
 exit /b 0
 
 :uploadModrinth
 set "MR_DATA=%TEMP%\mr_data_%RANDOM%.json"
+set "CHANGELOG_ESC=!CHANGELOG_JSON!"
+set "CHANGELOG_ESC=!CHANGELOG_ESC:\=\\!"
+set "CHANGELOG_ESC=!CHANGELOG_ESC:"=\\\"!"
+set "CHANGELOG_ESC=!CHANGELOG_ESC:\\n=\n!"
 > "!MR_DATA!" (
     echo {
     echo   "project_id":"%MODRINTH_PROJECT_ID%",
     echo   "name":"!DISPLAY_NAME!",
     echo   "version_number":"!VERSION_NUMBER!",
-    echo   "changelog":"!CHANGELOG_JSON!",
+    echo   "changelog":"!CHANGELOG_ESC!",
     echo   "game_versions":["!MC_VERSION!"],
     echo   "version_type":"%MODRINTH_VERSION_TYPE%",
     echo   "loaders":["!LOADER!"],
@@ -189,7 +212,11 @@ set "MR_DATA=%TEMP%\mr_data_%RANDOM%.json"
 )
 if defined DRY_RUN (
     echo [dry-run] Modrinth: "!FILE!" name=!DISPLAY_NAME! version=!VERSION_NUMBER! mc=!MC_VERSION! loader=!LOADER!
-    del "!MR_DATA!" >nul 2>&1
+    if defined KEEP_JSON (
+        echo [info] Kept request JSON: !MR_DATA!
+    ) else (
+        del "!MR_DATA!" >nul 2>&1
+    )
     exit /b 0
 )
 set "MR_RESP=%TEMP%\mr_resp_%RANDOM%.json"
@@ -198,13 +225,18 @@ if "!HTTP!"=="200" goto :mr_ok
 if "!HTTP!"=="201" goto :mr_ok
 echo [error] Modrinth upload failed for "!FILE!" (HTTP !HTTP!):
 type "!MR_RESP!"
-del "!MR_RESP!" >nul 2>&1
-del "!MR_DATA!" >nul 2>&1
+echo [info] Kept response: !MR_RESP!
+echo [info] Kept request JSON: !MR_DATA!
 exit /b 1
 :mr_ok
 echo [ok] Modrinth upload succeeded (HTTP !HTTP!).
-del "!MR_RESP!" >nul 2>&1
-del "!MR_DATA!" >nul 2>&1
+if defined KEEP_JSON (
+    echo [info] Kept response: !MR_RESP!
+    echo [info] Kept request JSON: !MR_DATA!
+) else (
+    del "!MR_RESP!" >nul 2>&1
+    del "!MR_DATA!" >nul 2>&1
+)
 exit /b 0
 
 :readChangelog
