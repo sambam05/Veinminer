@@ -53,18 +53,33 @@ public final class GeneralConfig extends TomlConfigFile {
         }
 
         public static BlockListMode parse(String raw, BlockListMode fallback) {
+            return parse(raw, fallback.perTool, fallback);
+        }
+
+        public static BlockListMode parse(String raw, boolean perToolFlag, BlockListMode fallback) {
             if (raw == null) {
-                return fallback;
+                return from(perToolFlag, fallback.blacklist);
             }
             String normalized = raw.trim().toUpperCase(Locale.ROOT)
                     .replace('-', '_')
                     .replace(' ', '_');
-            try {
-                return BlockListMode.valueOf(normalized);
-            } catch (IllegalArgumentException ex) {
-                Log.warn("Unknown block list mode '{}', defaulting to {}", raw, fallback);
-                return fallback;
+            return switch (normalized) {
+                case "WHITELIST", "WHITE", "WL", "GLOBAL_WHITELIST" -> from(perToolFlag, false);
+                case "BLACKLIST", "BLACK", "BL", "GLOBAL_BLACKLIST" -> from(perToolFlag, true);
+                case "PER_TOOL_WHITELIST", "PERTOOL_WHITELIST", "PER_TOOL" -> PER_TOOL_WHITELIST;
+                case "PER_TOOL_BLACKLIST", "PERTOOL_BLACKLIST" -> PER_TOOL_BLACKLIST;
+                default -> {
+                    Log.warn("Unknown block list mode '{}', defaulting to {}", raw, fallback);
+                    yield fallback;
+                }
+            };
+        }
+
+        public static BlockListMode from(boolean perToolFlag, boolean blacklistFlag) {
+            if (perToolFlag) {
+                return blacklistFlag ? PER_TOOL_BLACKLIST : PER_TOOL_WHITELIST;
             }
+            return blacklistFlag ? GLOBAL_BLACKLIST : GLOBAL_WHITELIST;
         }
     }
 
@@ -116,11 +131,11 @@ public final class GeneralConfig extends TomlConfigFile {
             exhaustion.enabled = config.getOrElse("Exhaustion.enabled", exhaustion.enabled);
             exhaustion.scale = clampNonNegative(readDouble(config, "Exhaustion.scale", exhaustion.scale), "Exhaustion.scale");
 
+            boolean blocksPerTool = config.getOrElse("Advanced.blocksPerTool", blockListMode.perTool());
             if (config.contains("Advanced.blockListMode")) {
-                blockListMode = BlockListMode.parse(config.get("Advanced.blockListMode"), blockListMode);
+                blockListMode = BlockListMode.parse(config.get("Advanced.blockListMode"), blocksPerTool, blockListMode);
             } else {
-                boolean legacyPerTool = config.getOrElse("Advanced.blocksPerTool", blockListMode.perTool());
-                blockListMode = legacyPerTool ? BlockListMode.PER_TOOL_WHITELIST : BlockListMode.GLOBAL_WHITELIST;
+                blockListMode = BlockListMode.from(blocksPerTool, blockListMode.blacklist());
             }
             autoLuckPerms = config.getOrElse("Integration.autoLuckPerms", autoLuckPerms);
             setupWizardPromptComplete = config.getOrElse("Advanced.setupWizardPromptComplete", setupWizardPromptComplete);
@@ -190,10 +205,11 @@ public final class GeneralConfig extends TomlConfigFile {
         config.set("Exhaustion.scale", exhaustion.scale);
         config.setComment("Exhaustion.scale", "Exhaustion multiplier. 1.0 = vanilla per-block exhaustion, 0.5 = half, 2.0 = double");
 
-        config.set("Advanced.blockListMode", blockListMode.name());
+        config.set("Advanced.blockListMode", blockListMode.blacklist() ? "BLACKLIST" : "WHITELIST");
         config.setComment("Advanced.blockListMode",
-                "Controls how block lists behave. Options: GLOBAL_WHITELIST, PER_TOOL_WHITELIST, GLOBAL_BLACKLIST, PER_TOOL_BLACKLIST");
-        config.remove("Advanced.blocksPerTool");
+                "Use WHITELIST or BLACKLIST. The blockPerTool toggle decides whether the lists are global or per-tool.");
+        config.set("Advanced.blocksPerTool", blockListMode.perTool());
+        config.setComment("Advanced.blocksPerTool", "If true, block lists are per-tool; if false, a single global list is used.");
 
         config.set("Advanced.setupWizardPromptComplete", setupWizardPromptComplete);
         config.setComment("Advanced.setupWizardPromptComplete", "If false, admins will be prompted on login to run /veinminer setup.");

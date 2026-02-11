@@ -12,6 +12,7 @@ REM   CURSEFORGE_CHANGELOG_TYPE=markdown
 REM   CURSEFORGE_RELATIONS=              (raw JSON; omitted when blank)
 REM   CURSEFORGE_EXTRA_TAGS=                  (space separated extra gameVersions tags)
 REM   CURSEFORGE_VERSION_FILE=                (reuse a pre-fetched https://minecraft.curseforge.com/api/game/versions payload)
+REM   CURSEFORGE_CURL_TRACE=1                 (optional: writes curl trace; may include auth headers)
 REM   DRY_RUN                                 - if set, skip HTTP calls and only log what would upload
 REM   UPLOAD_LIMIT                            - stop after N uploads (blank for no limit)
 REM   TARGET_UPLOADS                          - fabric | neoforge | both (prompted when missing)
@@ -20,38 +21,51 @@ REM The script scans dist-neoforge and dist-fabric for *.jar, parses the name
 REM Veinminer-<loader>-<modVersion>+mc<mcVersion>.jar, then posts each file to
 REM CurseForge using the provided token and changelog.
 
-REM Pre-set release defaults
-
+REM Pre-set release defaults (non-secret)
+set "CURSEFORGE_PROJECT_ID=1296186"
 set "TARGET_UPLOADS=both"
-if not defined CURSEFORGE_RELEASE_TYPE set "CURSEFORGE_RELEASE_TYPE=release"
-if "%CURSEFORGE_RELEASE_TYPE%"=="" set "CURSEFORGE_RELEASE_TYPE=release"
+if not defined CURSEFORGE_RELEASE_TYPE set "CURSEFORGE_RELEASE_TYPE=beta"
+if "%CURSEFORGE_RELEASE_TYPE%"=="" set "CURSEFORGE_RELEASE_TYPE=beta"
 if not defined CURSEFORGE_CHANGELOG_TYPE set "CURSEFORGE_CHANGELOG_TYPE=markdown"
 if "%CURSEFORGE_CHANGELOG_TYPE%"=="" set "CURSEFORGE_CHANGELOG_TYPE=markdown"
 if not defined CURSEFORGE_RELATIONS set "CURSEFORGE_RELATIONS="
 if not defined CURSEFORGE_EXTRA_TAGS set "CURSEFORGE_EXTRA_TAGS="
+if not defined CURSEFORGE_CURL_TRACE set "CURSEFORGE_CURL_TRACE="
 if not defined DRY_RUN set "DRY_RUN="
 if not defined CHANGELOG_FILE set "CHANGELOG_FILE=C:\Programming\VMM Rebuild\changelog.md"
 if not defined UPLOAD_LIMIT set "UPLOAD_LIMIT="
+if not defined USE_PYTHON_HTTP set "USE_PYTHON_HTTP="
 set "CF_VERSION_FILE="
 if defined CURSEFORGE_VERSION_FILE set "CF_VERSION_FILE=%CURSEFORGE_VERSION_FILE%"
 
 set "ROOT=%~dp0"
 if "%CHANGELOG_FILE%"=="" set "CHANGELOG_FILE=%ROOT%changelog.md"
 
-REM Known CurseForge gameVersionTypeIDs for Minecraft mainline releases (newest-first)
-set "MC_VERSION_TYPES=77784 75125 73407 73250 73242 70886 68722 64806 55023 628 572 599 552 17 16 15 14 13 12 11 6 5 4"
-set "NEO_VERSIONS=1.21 1.21.1 1.21.2 1.21.3 1.21.4 1.21.5 1.21.6 1.21.7 1.21.8 1.21.9 1.21.10"
-set "FAB_VERSIONS=1.20 1.20.1 1.20.2 1.20.3 1.20.4 1.20.5 1.20.6 1.21 1.21.1 1.21.2 1.21.3 1.21.4 1.21.5 1.21.6 1.21.7 1.21.8 1.21.9 1.21.10"
-
-where curl >nul 2>nul
-if errorlevel 1 (
-    echo [error] curl is not available in PATH.
+REM Load supported upload versions from shared metadata.
+call "%ROOT%version-metadata.bat" upload
+if errorlevel 1 goto :finish
+if not defined NEO_VERSIONS (
+    echo [error] NEO_VERSIONS was not provided by version-metadata.bat
     goto :finish
 )
+if not defined FAB_VERSIONS (
+    echo [error] FAB_VERSIONS was not provided by version-metadata.bat
+    goto :finish
+)
+
+REM Known CurseForge gameVersionTypeIDs for Minecraft mainline releases (newest-first)
+set "MC_VERSION_TYPES=77784 75125 73407 73250 73242 70886 68722 64806 55023 628 572 599 552 17 16 15 14 13 12 11 6 5 4"
+
+set "HTTP_IMPL=curl"
+if defined USE_PYTHON_HTTP set "HTTP_IMPL=python"
 
 call :requireEnv CURSEFORGE_TOKEN
 call :requireEnv CURSEFORGE_PROJECT_ID
 if defined MISSING_ENV goto :finish
+
+call :chooseHttpClient
+if defined DEBUG_LOG echo [debug] chose HTTP client !HTTP_IMPL!, errorlevel=!errorlevel!
+if errorlevel 1 goto :finish
 
 if not exist "%CHANGELOG_FILE%" (
     echo [error] Changelog file not found: "%CHANGELOG_FILE%"
@@ -59,6 +73,7 @@ if not exist "%CHANGELOG_FILE%" (
 )
 
 call :readChangelog "%CHANGELOG_FILE%"
+if defined DEBUG_LOG echo [debug] read changelog, errorlevel=!errorlevel!
 if errorlevel 1 goto :finish
 if not defined CHANGELOG_JSON (
     echo [error] Changelog is empty after reading "%CHANGELOG_FILE%".
@@ -69,7 +84,8 @@ if "!CHANGELOG_JSON!"=="" (
     goto :finish
 )
 
-call :loadVersionList
+call :loadCfVersionList
+if defined DEBUG_LOG echo [debug] loaded version list, errorlevel=!errorlevel!
 if errorlevel 1 goto :finish
 
 if defined UPLOAD_LIMIT (
@@ -89,6 +105,11 @@ set "STOP_UPLOADS="
 
 call :chooseTargets
 if errorlevel 1 goto :finish
+if defined DEBUG_LOG echo [debug] targets: !TARGET_CHOICE!, process fabric=!PROCESS_FABRIC! neoforge=!PROCESS_NEOFORGE!
+
+if defined DRY_RUN (
+    echo [info] DRY_RUN is set; uploads will not be sent.
+)
 
 echo Using changelog from "%CHANGELOG_FILE%"
 echo.
@@ -104,6 +125,31 @@ if defined PROCESS_FABRIC (
 )
 
 goto :finish
+
+:chooseHttpClient
+if /I "!HTTP_IMPL!"=="curl" (
+    where curl >nul 2>nul
+    if errorlevel 1 (
+        echo [warn] curl not found in PATH; switching to Python HTTP client.
+        set "HTTP_IMPL=python"
+    )
+)
+if /I "!HTTP_IMPL!"=="curl" (
+    curl.exe -s https://example.com >nul 2>nul
+    if errorlevel 1 (
+        echo [warn] curl HTTPS probe failed; switching to Python HTTP client.
+        set "HTTP_IMPL=python"
+    )
+)
+if /I "!HTTP_IMPL!"=="python" (
+    python -c "import urllib.request; urllib.request.urlopen('https://example.com')" >nul 2>nul
+    if errorlevel 1 (
+        echo [error] Python HTTPS probe failed. Fix Python SSL or set USE_PYTHON_HTTP=curl.
+        exit /b 1
+    )
+)
+echo [info] HTTP client: !HTTP_IMPL!
+exit /b 0
 
 :chooseTargets
 if not defined TARGET_UPLOADS (
@@ -181,6 +227,7 @@ set "VERSION_NUMBER=!MOD_VERSION!+!MC_VERSION!"
 set "DISPLAY_NAME=!MOD_NAME! !MC_VERSION! (!LOADER!)"
 
 echo === Publishing "!FILE!" ===
+if defined DEBUG_LOG echo [debug] uploadCurseforge start loader=!LOADER! mc=!MC_VERSION! version=!VERSION_NUMBER!
 call :uploadCurseforge
 if errorlevel 1 exit /b 1
 exit /b 0
@@ -191,37 +238,72 @@ if /I "!LOADER!"=="fabric" set "LOADER_TAG=Fabric"
 if /I "!LOADER!"=="neoforge" set "LOADER_TAG=NeoForge"
 
 call :resolveGameVersions
+if defined DEBUG_LOG echo [debug] resolved versions mcId=!CF_MC_ID! loaderId=!CF_LOADER_ID! extras=!CURSEFORGE_EXTRA_TAGS!
 if errorlevel 1 exit /b 1
 
-set "CF_META=%TEMP%\\cf_meta_%RANDOM%.json"
-> "!CF_META!" (
-    echo {
-    echo   "displayName":"!DISPLAY_NAME!",
-    echo   "gameVersions":!GAME_VERSIONS_JSON!,
-    echo   "releaseType":"%CURSEFORGE_RELEASE_TYPE%",
-    echo   "changelog":"!CHANGELOG_JSON!",
-    echo   "changelogType":"%CURSEFORGE_CHANGELOG_TYPE%"
-    if defined CURSEFORGE_RELATIONS if not "%CURSEFORGE_RELATIONS%"=="" echo   ,"relations":%CURSEFORGE_RELATIONS%
-    echo }
+set "CF_META=%TEMP%\cf_meta_%RANDOM%.json"
+if defined DEBUG_LOG echo [debug] metadata path: !CF_META!
+powershell -NoLogo -NoProfile -Command ^
+  "$ErrorActionPreference='Stop';" ^
+  "$changelog = '!CHANGELOG_JSON!';" ^
+  "$relations = $null; if('!CURSEFORGE_RELATIONS!' -ne ''){ $relations = ConvertFrom-Json '!CURSEFORGE_RELATIONS!'; }" ^
+  "$gameVersions = @(); $rawIds = '!GAME_VERSIONS_JSON!'.Trim('[]'); if($rawIds -ne ''){ $gameVersions = $rawIds.Split(',') | ForEach-Object { [int]($_.Trim()) } };" ^
+  "$data = [ordered]@{displayName='!DISPLAY_NAME!';gameVersions=$gameVersions;releaseType='!CURSEFORGE_RELEASE_TYPE!';changelog=$changelog;changelogType='!CURSEFORGE_CHANGELOG_TYPE!'};" ^
+  "if($relations){ $data['relations']=$relations }" ^
+  "$json = $data | ConvertTo-Json -Depth 8 -Compress;" ^
+  "$utf8NoBom = New-Object System.Text.UTF8Encoding($false);" ^
+  "[System.IO.File]::WriteAllText('!CF_META!', $json, $utf8NoBom)"
+if defined DEBUG_LOG echo [debug] after metadata write, errorlevel=!ERRORLEVEL!, DRY_RUN=!DRY_RUN!
+if errorlevel 1 (
+    echo [error] Failed to create metadata file: !CF_META!
+    exit /b 1
 )
 if defined DRY_RUN (
     echo [dry-run] CurseForge: "!FILE!" name=!DISPLAY_NAME! version=!VERSION_NUMBER! mc=!MC_VERSION! loader=!LOADER_TAG! releaseType=%CURSEFORGE_RELEASE_TYPE%
     del "!CF_META!" >nul 2>&1
     exit /b 0
 )
-set "CF_RESP=%TEMP%\\cf_resp_%RANDOM%.json"
-for /f %%H in ('curl.exe -s -o "!CF_RESP!" -w "%%{http_code}" -X POST "https://minecraft.curseforge.com/api/projects/%CURSEFORGE_PROJECT_ID%/upload-file" -H "X-Api-Token: %CURSEFORGE_TOKEN%" -F "metadata=<\"!CF_META!\"" -F "file=@\"!FILE!\""') do set "HTTP=%%H"
-if "!HTTP!"=="200" goto :cf_ok
-if "!HTTP!"=="201" goto :cf_ok
+set "CF_RESP=%TEMP%\cf_resp_%RANDOM%.json"
+if not exist "!CF_META!" (
+    echo [error] Metadata file missing: !CF_META!
+    exit /b 1
+)
+for %%S in ("!CF_META!") do (
+    set "CF_META_SHORT=%%~sS"
+    if "!CF_META_SHORT!"=="" set "CF_META_SHORT=%%~fS"
+    echo [info] Metadata file: %%~fS ^(%%~zS bytes^) short=!CF_META_SHORT!
+)
+set "CF_TRACE="
+set "HTTP="
+if /I "!HTTP_IMPL!"=="curl" (
+    if defined CURSEFORGE_CURL_TRACE (
+        set "CF_TRACE=%TEMP%\cf_trace_%RANDOM%.log"
+        for /f %%H in ('curl.exe %CURL_OPTS% --trace-ascii "!CF_TRACE!" -o "!CF_RESP!" -w "%%{http_code}" "https://minecraft.curseforge.com/api/projects/%CURSEFORGE_PROJECT_ID%/upload-file" -H "X-Api-Token: %CURSEFORGE_TOKEN%" -F "metadata=<!CF_META_SHORT!;type=application/json" -F "file=@!FILE!;type=application/java-archive"') do set "HTTP=%%H"
+    ) else (
+        for /f %%H in ('curl.exe %CURL_OPTS% -o "!CF_RESP!" -w "%%{http_code}" "https://minecraft.curseforge.com/api/projects/%CURSEFORGE_PROJECT_ID%/upload-file" -H "X-Api-Token: %CURSEFORGE_TOKEN%" -F "metadata=<!CF_META_SHORT!;type=application/json" -F "file=@!FILE!;type=application/java-archive"') do set "HTTP=%%H"
+    )
+    if "!HTTP!"=="200" goto :cf_ok
+    if "!HTTP!"=="201" goto :cf_ok
+    echo [warn] CurseForge upload via curl failed for "!FILE!" (HTTP !HTTP!^); retrying with Python client...
+)
+if /I "!HTTP_IMPL!"=="python" (
+    call :uploadWithPython "!CF_META_SHORT!" "!FILE!" "!CF_RESP!"
+    if not "!CF_HTTP_STATUS!"=="" set "HTTP=!CF_HTTP_STATUS!"
+    if "!HTTP!"=="200" goto :cf_ok
+    if "!HTTP!"=="201" goto :cf_ok
+)
+if "!HTTP!"=="" set "HTTP=000"
 echo [error] CurseForge upload failed for "!FILE!" (HTTP !HTTP!):
-type "!CF_RESP!"
-del "!CF_RESP!" >nul 2>&1
-del "!CF_META!" >nul 2>&1
+if exist "!CF_RESP!" type "!CF_RESP!"
+echo [info] Kept metadata: !CF_META!
+echo [info] Kept response: !CF_RESP!
+if defined CF_TRACE if exist "!CF_TRACE!" echo [info] Curl trace: !CF_TRACE!
 exit /b 1
 :cf_ok
 echo [ok] CurseForge upload succeeded (HTTP !HTTP!).
 del "!CF_RESP!" >nul 2>&1
 del "!CF_META!" >nul 2>&1
+if defined CF_TRACE del "!CF_TRACE!" >nul 2>&1
 exit /b 0
 
 :readChangelog
@@ -240,7 +322,7 @@ for /f "usebackq delims=" %%L in ("%~1") do (
 if not defined CHANGELOG_JSON exit /b 1
 exit /b 0
 
-:loadVersionList
+:loadCfVersionList
 set "CF_VER_HTTP="
 if defined CF_VERSION_FILE (
     if exist "!CF_VERSION_FILE!" (
@@ -253,14 +335,11 @@ if defined CF_VERSION_FILE (
 )
 set "CF_VERSION_FILE_CLEANUP="
 if not defined CF_VERSION_FILE (
-    set "CF_VERSION_FILE=%TEMP%\\cf_versions_%RANDOM%.json"
+    set "CF_VERSION_FILE=%TEMP%\cf_versions_%RANDOM%.json"
     set "CF_VERSION_FILE_CLEANUP=1"
     echo [info] Downloading CurseForge game version list...
-    for /f %%H in ('curl.exe -s -o "!CF_VERSION_FILE!" -w "%%{http_code}" -H "X-Api-Token: %CURSEFORGE_TOKEN%" "https://minecraft.curseforge.com/api/game/versions"') do set "CF_VER_HTTP=%%H"
-    if not "!CF_VER_HTTP!"=="200" (
-        echo [error] Failed to download CurseForge game version list ^(HTTP !CF_VER_HTTP!^).
-        exit /b 1
-    )
+    call :downloadCfVersions "!CF_VERSION_FILE!"
+    if errorlevel 1 exit /b 1
 )
 for %%S in ("!CF_VERSION_FILE!") do (
     if not exist "%%~fS" (
@@ -273,6 +352,114 @@ for %%S in ("!CF_VERSION_FILE!") do (
     )
 )
 exit /b 0
+
+:downloadCfVersions
+set "CF_HTTP_STATUS="
+if /I "!HTTP_IMPL!"=="curl" (
+    for /f %%H in ('curl.exe -s -o "%~1" -w "%%{http_code}" -H "X-Api-Token: %CURSEFORGE_TOKEN%" "https://minecraft.curseforge.com/api/game/versions"') do set "CF_HTTP_STATUS=%%H"
+    if "!CF_HTTP_STATUS!"=="200" exit /b 0
+    echo [warn] curl download failed (HTTP !CF_HTTP_STATUS!^); retrying with Python client...
+)
+call :downloadWithPython "%~1" "https://minecraft.curseforge.com/api/game/versions"
+if errorlevel 1 exit /b 1
+if not "!CF_HTTP_STATUS!"=="200" (
+    echo [error] Failed to download CurseForge game version list ^(HTTP !CF_HTTP_STATUS!^).
+    exit /b 1
+)
+exit /b 0
+
+:downloadWithPython
+set "HTTP_OUT=%~1"
+set "HTTP_URL=%~2"
+set "CF_HTTP_STATUS="
+set "PY_HTTP=%TEMP%\cf_dl_%RANDOM%.py"
+> "!PY_HTTP!" echo import os, sys, urllib.request, urllib.error
+>> "!PY_HTTP!" echo out_path = os.environ["HTTP_OUT"]
+>> "!PY_HTTP!" echo url = os.environ["HTTP_URL"]
+>> "!PY_HTTP!" echo token = os.environ.get("CURSEFORGE_TOKEN","")
+>> "!PY_HTTP!" echo headers = {"X-Api-Token": token} if token else {}
+>> "!PY_HTTP!" echo req = urllib.request.Request(url, headers=headers)
+>> "!PY_HTTP!" echo try:
+>> "!PY_HTTP!" echo ^    with urllib.request.urlopen(req) as resp:
+>> "!PY_HTTP!" echo ^        data = resp.read()
+>> "!PY_HTTP!" echo ^        open(out_path, "wb").write(data)
+>> "!PY_HTTP!" echo ^        print(resp.getcode())
+>> "!PY_HTTP!" echo ^        sys.exit(0)
+>> "!PY_HTTP!" echo except urllib.error.HTTPError as exc:
+>> "!PY_HTTP!" echo ^    print(getattr(exc, "code", 0))
+>> "!PY_HTTP!" echo ^    try:
+>> "!PY_HTTP!" echo ^        open(out_path, "wb").write(exc.read())
+>> "!PY_HTTP!" echo ^    except Exception:
+>> "!PY_HTTP!" echo ^        pass
+>> "!PY_HTTP!" echo ^    sys.exit(1)
+>> "!PY_HTTP!" echo except Exception as exc:
+>> "!PY_HTTP!" echo ^    sys.stderr.write(str(exc))
+>> "!PY_HTTP!" echo ^    sys.exit(1)
+for /f %%H in ('python "!PY_HTTP!"') do set "CF_HTTP_STATUS=%%H"
+set "PY_RC=%ERRORLEVEL%"
+del "!PY_HTTP!" >nul 2>&1
+if not defined CF_HTTP_STATUS set "CF_HTTP_STATUS="
+if not "%PY_RC%"=="0" exit /b 1
+exit /b 0
+
+:uploadWithPython
+set "CF_META_FILE=%~1"
+set "CF_UPLOAD_FILE=%~2"
+set "CF_RESP_FILE=%~3"
+set "CF_HTTP_STATUS="
+set "PY_HTTP=%TEMP%\cf_up_%RANDOM%.py"
+> "!PY_HTTP!" echo import os, sys, uuid, urllib.request, urllib.error
+>> "!PY_HTTP!" echo meta_path = os.environ["CF_META_FILE"]
+>> "!PY_HTTP!" echo jar_path = os.environ["CF_UPLOAD_FILE"]
+>> "!PY_HTTP!" echo resp_path = os.environ.get("CF_RESP_FILE", "")
+>> "!PY_HTTP!" echo project_id = os.environ["CURSEFORGE_PROJECT_ID"]
+>> "!PY_HTTP!" echo token = os.environ["CURSEFORGE_TOKEN"]
+>> "!PY_HTTP!" echo boundary = "----cfboundary" + uuid.uuid4().hex
+>> "!PY_HTTP!" echo def field(name, content, ctype=None):
+>> "!PY_HTTP!" echo ^    return (f"--{boundary}\\r\\n"
+>> "!PY_HTTP!" echo ^            f"Content-Disposition: form-data; name=\\\"{name}\\\"\\r\\n"
+>> "!PY_HTTP!" echo ^            + (f"Content-Type: {ctype}\\r\\n" if ctype else "")
+>> "!PY_HTTP!" echo ^            + "\\r\\n").encode() + content + b"\\r\\n"
+>> "!PY_HTTP!" echo def file_part(name, filename, content, ctype):
+>> "!PY_HTTP!" echo ^    return (f"--{boundary}\\r\\n"
+>> "!PY_HTTP!" echo ^            f"Content-Disposition: form-data; name=\\\"{name}\\\"; filename=\\\"{filename}\\\"\\r\\n"
+>> "!PY_HTTP!" echo ^            f"Content-Type: {ctype}\\r\\n\\r\\n").encode() + content + b"\\r\\n"
+>> "!PY_HTTP!" echo with open(meta_path, "rb") as fh:
+>> "!PY_HTTP!" echo ^    meta_bytes = fh.read()
+>> "!PY_HTTP!" echo with open(jar_path, "rb") as fh:
+>> "!PY_HTTP!" echo ^    jar_bytes = fh.read()
+>> "!PY_HTTP!" echo body = b"".join([
+>> "!PY_HTTP!" echo ^    field("metadata", meta_bytes, "application/json"),
+>> "!PY_HTTP!" echo ^    file_part("file", os.path.basename(jar_path), jar_bytes, "application/java-archive"),
+>> "!PY_HTTP!" echo ^    f"--{boundary}--\\r\\n".encode()
+>> "!PY_HTTP!" echo ])
+>> "!PY_HTTP!" echo url = f"https://minecraft.curseforge.com/api/projects/{project_id}/upload-file"
+>> "!PY_HTTP!" echo headers = {"X-Api-Token": token, "Content-Type": f"multipart/form-data; boundary={boundary}"}
+>> "!PY_HTTP!" echo req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+>> "!PY_HTTP!" echo status = 0
+>> "!PY_HTTP!" echo resp_body = b""
+>> "!PY_HTTP!" echo try:
+>> "!PY_HTTP!" echo ^    with urllib.request.urlopen(req) as resp:
+>> "!PY_HTTP!" echo ^        status = resp.getcode()
+>> "!PY_HTTP!" echo ^        resp_body = resp.read()
+>> "!PY_HTTP!" echo except urllib.error.HTTPError as exc:
+>> "!PY_HTTP!" echo ^    status = getattr(exc, "code", 0)
+>> "!PY_HTTP!" echo ^    resp_body = exc.read()
+>> "!PY_HTTP!" echo except Exception as exc:
+>> "!PY_HTTP!" echo ^    sys.stderr.write(str(exc))
+>> "!PY_HTTP!" echo ^    sys.exit(2)
+>> "!PY_HTTP!" echo if resp_path:
+>> "!PY_HTTP!" echo ^    try:
+>> "!PY_HTTP!" echo ^        open(resp_path, "wb").write(resp_body)
+>> "!PY_HTTP!" echo ^    except Exception:
+>> "!PY_HTTP!" echo ^        pass
+>> "!PY_HTTP!" echo print(status)
+>> "!PY_HTTP!" echo sys.exit(0 if status in (200, 201) else 1)
+for /f %%H in ('python "!PY_HTTP!"') do set "CF_HTTP_STATUS=%%H"
+set "PY_RC=%ERRORLEVEL%"
+del "!PY_HTTP!" >nul 2>&1
+if not defined CF_HTTP_STATUS set "CF_HTTP_STATUS="
+exit /b %PY_RC%
 
 :resolveGameVersions
 call :getVersionId "!MC_VERSION!" CF_MC_ID "!MC_VERSION_TYPES!" 0

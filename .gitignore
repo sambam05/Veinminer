@@ -2,23 +2,27 @@
 dist-fabric/
 dist-neoforge/
 build-logs/
+crashreports/
 **/build/
 **/.gradle/
 **/.gradle_user*/
 .gradle/
 .tmp/
 
-# Local helpers
-build-all.bat
-build-fabric.bat
-build-neoforge.bat
-fabric-metadata.xml
-temp.html
-
 # IDE/Editors
 .idea/
 .vscode/
 *.iml
+*.ipr
+*.iws
+**/.settings/
+**/.eclipse/
+**/.project
+**/.classpath
+
+# Compiled / generated binaries
+**/bin/
+**/*.class
 
 # OS junk
 .DS_Store
