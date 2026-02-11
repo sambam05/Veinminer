@@ -21,8 +21,6 @@ REM Veinminer-<loader>-<modVersion>+mc<mcVersion>.jar, then posts each file to
 REM CurseForge using the provided token and changelog.
 
 REM Pre-set release defaults
-set "CURSEFORGE_TOKEN=e4e10dc1-8577-4ae7-a4b6-7d10bb1a0db1"
-set "CURSEFORGE_PROJECT_ID=1296186"
 set "TARGET_UPLOADS=both"
 if not defined CURSEFORGE_RELEASE_TYPE set "CURSEFORGE_RELEASE_TYPE=release"
 if "%CURSEFORGE_RELEASE_TYPE%"=="" set "CURSEFORGE_RELEASE_TYPE=release"
