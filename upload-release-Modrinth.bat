@@ -18,8 +18,7 @@ REM Veinminer-<loader>-<modVersion>+mc<mcVersion>.jar, then posts each file to
 REM Modrinth using the provided token and changelog.
 
 REM Pre-set release dry-run defaults
-if not defined MODRINTH_TOKEN set "MODRINTH_TOKEN=mrp_IUliLq01Wnqa5lytMOePv0cKoNr74xCgJlyfn1xFIVdGmiZ6IaPOyUa6Jh0h"
-if not defined MODRINTH_PROJECT_ID set "MODRINTH_PROJECT_ID=MnavVAzj"
+
 if not defined MODRINTH_VERSION_TYPE set "MODRINTH_VERSION_TYPE=release"
 if not defined DRY_RUN set "DRY_RUN="
 if not defined CHANGELOG_FILE set "CHANGELOG_FILE=C:\Programming\VMM Rebuild\changelog.md"
