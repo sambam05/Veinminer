@@ -102,6 +102,10 @@ dependencies {
     include 'com.google.code.gson:gson:2.11.0'
 
     compileOnly 'net.luckperms:api:5.4'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
 }
 
 processResources {
@@ -127,6 +131,10 @@ tasks.withType(JavaCompile).configureEach {
     if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
         it.options.release.set(targetJavaVersion)
     }
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
 }
 
 java {
@@ -186,4 +194,5 @@ tasks.register("buildAllSupported") {
     description = "Builds the mod for all supported Minecraft versions."
     dependsOn buildTasks
 }
+
 

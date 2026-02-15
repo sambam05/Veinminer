@@ -192,4 +192,5 @@ tasks.register("buildAllSupported") {
     description = "Builds the mod for all supported Minecraft versions."
     dependsOn buildTasks
 }
-
+// Shared legacy sources to reduce duplicated maintenance.
+sourceSets.main.java.srcDir '../shared/fabric-legacy/src/main/java'

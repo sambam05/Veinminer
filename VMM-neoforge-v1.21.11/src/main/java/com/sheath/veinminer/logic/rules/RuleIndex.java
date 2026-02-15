@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 
 public final class RuleIndex {
 
@@ -150,21 +151,23 @@ public final class RuleIndex {
 
         public static BlockRules from(ConfigService.RegistryList<Block> list) {
             Objects.requireNonNull(list, "registry list");
-            return new BlockRules(Collections.unmodifiableSet(list.identifiers()),
-                    Collections.unmodifiableSet(list.tags()));
+            return of(list.identifiers(), list.tags());
+        }
+
+        public static BlockRules of(Set<Identifier> resourceLocations, Set<TagKey<Block>> tags) {
+            Objects.requireNonNull(resourceLocations, "resourceLocations");
+            Objects.requireNonNull(tags, "tags");
+            return new BlockRules(Collections.unmodifiableSet(Set.copyOf(resourceLocations)),
+                    Collections.unmodifiableSet(Set.copyOf(tags)));
         }
 
         public boolean matches(BlockState state) {
             Identifier id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
-            if (resourceLocations.contains(id)) {
-                return true;
-            }
-            for (TagKey<Block> tag : tags) {
-                if (state.is(tag)) {
-                    return true;
-                }
-            }
-            return false;
+            return matches(id, state::is);
+        }
+
+        public boolean matches(Identifier id, Predicate<TagKey<Block>> tagMatcher) {
+            return RuleMatcher.matches(id, resourceLocations, tags, tagMatcher);
         }
 
         public Set<Identifier> resourceLocations() {
@@ -176,4 +179,3 @@ public final class RuleIndex {
         }
     }
 }
-

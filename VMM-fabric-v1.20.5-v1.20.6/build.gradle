@@ -196,4 +196,5 @@ tasks.register("buildAllSupported") {
         logger.lifecycle("Built targets: {}", supportedMinecraftVersions.keySet().join(", "))
     }
 }
-
+// Shared legacy sources to reduce duplicated maintenance.
+sourceSets.main.java.srcDir '../shared/fabric-legacy/src/main/java'

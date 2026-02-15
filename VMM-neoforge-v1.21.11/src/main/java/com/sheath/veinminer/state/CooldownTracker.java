@@ -19,16 +19,9 @@ public final class CooldownTracker {
     }
 
     public int remainingSeconds(ServerPlayer player, int cooldownSeconds) {
-        if (cooldownSeconds <= 0) {
-            return 0;
-        }
         long now = Util.getMillis();
         long last = cooldowns.getOrDefault(player.getUUID(), 0L);
-        long remainingMs = (cooldownSeconds * 1000L) - (now - last);
-        if (remainingMs <= 0L) {
-            return 0;
-        }
-        return (int) ((remainingMs + 999L) / 1000L);
+        return computeRemainingSeconds(now, last, cooldownSeconds);
     }
 
     public void startCooldown(ServerPlayer player) {
@@ -42,5 +35,15 @@ public final class CooldownTracker {
     public void clearAll() {
         cooldowns.clear();
     }
-}
 
+    static int computeRemainingSeconds(long nowMs, long lastMs, int cooldownSeconds) {
+        if (cooldownSeconds <= 0) {
+            return 0;
+        }
+        long remainingMs = (cooldownSeconds * 1000L) - (nowMs - lastMs);
+        if (remainingMs <= 0L) {
+            return 0;
+        }
+        return (int) ((remainingMs + 999L) / 1000L);
+    }
+}

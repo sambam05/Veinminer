@@ -197,4 +197,5 @@ publishing {
         }
     }
 }
-
+// Shared legacy sources to reduce duplicated maintenance.
+sourceSets.main.java.srcDir '../shared/neoforge-legacy/src/main/java'

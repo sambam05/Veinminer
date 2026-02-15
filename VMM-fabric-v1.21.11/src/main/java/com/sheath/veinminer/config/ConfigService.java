@@ -416,6 +416,7 @@ public final class ConfigService {
         List<String> defaults = new ArrayList<>();
         defaults.add(Registries.ITEM.getId(Items.WOODEN_PICKAXE).toString());
         defaults.add(Registries.ITEM.getId(Items.STONE_PICKAXE).toString());
+        defaults.add(Registries.ITEM.getId(Items.COPPER_PICKAXE).toString());
         defaults.add(Registries.ITEM.getId(Items.IRON_PICKAXE).toString());
         defaults.add(Registries.ITEM.getId(Items.GOLDEN_PICKAXE).toString());
         defaults.add(Registries.ITEM.getId(Items.DIAMOND_PICKAXE).toString());

@@ -135,12 +135,17 @@ repositories {
 
 dependencies {
     implementation "net.neoforged:neoforge:${project.neoforge_version}"
+    testImplementation "net.neoforged:neoforge:${project.neoforge_version}"
 
     implementation 'com.electronwill.night-config:core:3.8.0'
     implementation 'com.electronwill.night-config:toml:3.8.0'
     implementation 'com.google.code.gson:gson:2.11.0'
 
     compileOnly 'net.luckperms:api:5.4'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
 }
 
 neoForge {
@@ -192,6 +197,10 @@ sourceSets.main.resources {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.release = 21
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
 }
 
 processResources {
@@ -252,4 +261,5 @@ publishing {
         }
     }
 }
+
 

@@ -2,6 +2,7 @@
     "key.veinminer.toggle": "Toggle Veinminer",
     "key.veinminer.activate": "Activate Veinminer",
     "category.veinminer": "Veinminer",
+    "key.categories.veinminermod.veinminer": "Veinminer",
     "command.veinminer.enabled": "enabled",
     "command.veinminer.disabled": "disabled",
     "command.veinminer.list_entry": "- %s",

@@ -1,16 +1,14 @@
-## 3.1.0
+## 3.1.1
 ### **New:**
-- Optional exhaustion cost for vein mining (disabled by default) with `Exhaustion.enabled` and `Exhaustion.scale` in `GeneralConfig.toml` (`1.0` = vanilla per-block cost).
-- Admin commands for exhaustion: `/veinminer settings exhaustion enable|disable`, `/veinminer settings exhaustion scale <value>`.
-- Vein-mined blocks now increment vanilla mined-block stats (Fabric uses `Stats.MINED`, NeoForge uses `Stats.BLOCK_MINED`) so external stat trackers reflect vein mining.
-- Interactive `/veinminer setup` wizard (admin-only) with clickable chat buttons covering enable/disable, crouch requirement, block limits, cooldown, exhaustion + scale, durability guard, particles, and block list mode.
-- Admin login prompt (clickable Yes/No) offering to run `/veinminer setup` until dismissed or accepted.
 
 ### **Changes:**
-- `/veinminer settings` output now shows exhaustion enabled + scale.
-- Added `/veinminer help setup` topic entry.
-- Setup wizard UI restyled (colored headers/buttons, spaced nav row) and clears chat between steps; durability guard and particles now use multi-step flows (enable -> mode/value and enable -> duration/color).
-- Block list mode buttons/command remain `whitelist`/`blacklist`, but now honor the separate block-per-tool toggle: config writes `blockListMode = "WHITELIST|BLACKLIST"` plus `blocksPerTool = true|false` and still loads legacy `GLOBAL_*`/`PER_TOOL_*` values.
+- Added copper pickaxe support to the default veinmining tool list for Minecraft 1.21.11 (Fabric and NeoForge).
+- Re-ran the full multi-version build pipeline (`build-all.bat`) and verified successful Fabric/NeoForge artifacts across supported targets.
 
 ### **Fixes:**
-- N/A
+- Fixed unsafe off-thread world access during vein detection by moving block-state traversal to the server thread before async planning.
+- Added explicit async failure handling for vein planning (`exceptionally`) with error logging and a single-block fallback so canceled breaks do not silently fail.
+- Prevented per-player settings loss on disconnect by flushing player settings before in-memory state is dropped.
+- Added automated test coverage for config formatting/parsing behavior, rule matching, cooldown rounding, and durability cap logic.
+- Added GitHub Actions CI matrix to run tests for both Fabric and NeoForge targets.
+- Fixed the controls menu keybind category translation for identifier-based key categories by adding `key.categories.veinminermod.veinminer` in 1.21.9-1.21.10 and 1.21.11 (Fabric and NeoForge).
