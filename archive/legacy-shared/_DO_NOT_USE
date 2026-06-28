@@ -1,0 +1,5 @@
+ARCHIVE DIRECTORY ONLY.
+
+Do not develop here.
+Do not reference this path from build scripts.
+Use VMM/core/* as shared source of truth.

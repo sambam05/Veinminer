@@ -197,27 +197,26 @@ sourceSets.main.resources {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.release = 21
+    options.compilerArgs += ['-Xlint:none']
 }
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
 }
 
+def resourceExpandProps = [
+        version: project.version,
+        minecraft_version: project.minecraft_version,
+        neoforge_version: project.neoforge_version,
+        minecraft_dependency_range: project.minecraft_dependency_range,
+        neoforge_dependency_range: project.neoforge_dependency_range
+]
+
 processResources {
-    inputs.property 'version', project.version
-    inputs.property 'minecraft_version', project.minecraft_version
-    inputs.property 'neoforge_version', project.neoforge_version
-    inputs.property 'minecraft_dependency_range', project.minecraft_dependency_range
-    inputs.property 'neoforge_dependency_range', project.neoforge_dependency_range
+    inputs.properties(resourceExpandProps)
 
     filesMatching('META-INF/neoforge.mods.toml') {
-        expand(
-                version: project.version,
-                minecraft_version: project.minecraft_version,
-                neoforge_version: project.neoforge_version,
-                minecraft_dependency_range: project.minecraft_dependency_range,
-                neoforge_dependency_range: project.neoforge_dependency_range
-        )
+        expand(resourceExpandProps)
     }
 }
 
@@ -262,4 +261,9 @@ publishing {
     }
 }
 
-
+sourceSets.main.java.srcDir '../VMM/core/basic/neoforge/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/visual/neoforge/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/advanced/neoforge/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/commands/neoforge/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/config/neoforge/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/util/neoforge/src/main/java'

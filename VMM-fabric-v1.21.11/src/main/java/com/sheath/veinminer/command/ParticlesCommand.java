@@ -3,27 +3,22 @@ package com.sheath.veinminer.command;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.ArgumentBuilder;
 import com.sheath.veinminer.core.Bootstrap;
-import com.sheath.veinminer.logic.VeinMinerController;
-import com.sheath.veinminer.permission.PermissionCompat;
+import com.sheath.veinminer.player.PlayerSettingsStore;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import com.sheath.veinminer.util.Translations;
 
-import java.util.function.Predicate;
+import java.util.function.Consumer;
 
 final class ParticlesCommand {
 
     private ParticlesCommand() {
     }
 
-    static ArgumentBuilder<ServerCommandSource, ?> build(Bootstrap bootstrap,
-                                                         Predicate<ServerCommandSource> managePermission) {
+    static ArgumentBuilder<ServerCommandSource, ?> buildPlayer(Bootstrap bootstrap) {
         return CommandManager.literal("particles")
-                .requires(managePermission::test)
-                .then(CommandManager.literal("help").executes(ctx -> showHelp(ctx.getSource())))
-                .executes(ctx -> showHelp(ctx.getSource()))
                 .then(CommandManager.literal("toggle").executes(ctx -> toggleParticles(ctx.getSource(), bootstrap)))
                 .then(CommandManager.literal("setcolor")
                         .then(CommandManager.argument("red", IntegerArgumentType.integer(0, 255))
@@ -45,21 +40,14 @@ final class ParticlesCommand {
 
     private static int toggleParticles(ServerCommandSource source,
                                        Bootstrap bootstrap) {
-        if (!ensurePermission(source, bootstrap,
-                VeinMinerController.Permissions.PARTICLES_MANAGE,
-                VeinMinerController.Permissions.PARTICLES_ENABLE,
-                VeinMinerController.Permissions.PARTICLES_DISABLE)) {
-            return 0;
-        }
-        var particles = bootstrap.configService().general().particles();
-        boolean newState = !particles.enabled();
-        particles.setEnabled(newState);
-        bootstrap.configService().general().save();
-        bootstrap.configService().rebuildSnapshot();
-        bootstrap.controller().reloadFromConfig();
-        source.sendFeedback(() -> Translations.translate("command.veinminer.particles.toggle",
-                Translations.translate(newState ? "command.veinminer.enabled" : "command.veinminer.disabled")), true);
-        return 1;
+        return withPlayer(source, player -> {
+            PlayerSettingsStore store = bootstrap.playerSettings();
+            boolean newState = !store.isParticlesEnabled(player);
+            store.setParticlesEnabled(player, newState);
+            store.saveAsync();
+            player.sendMessage(Translations.translate("command.veinminer.particles.toggle",
+                    Translations.translate(newState ? "command.veinminer.enabled" : "command.veinminer.disabled")), true);
+        });
     }
 
     private static int setColor(ServerCommandSource source,
@@ -67,68 +55,46 @@ final class ParticlesCommand {
                                 int red,
                                 int green,
                                 int blue) {
-        if (!ensurePermission(source, bootstrap,
-                VeinMinerController.Permissions.PARTICLES_MANAGE,
-                VeinMinerController.Permissions.PARTICLES_SETCOLOR)) {
-            return 0;
-        }
-        var particles = bootstrap.configService().general().particles();
-        particles.setRed(red);
-        particles.setGreen(green);
-        particles.setBlue(blue);
-        bootstrap.configService().general().save();
-        bootstrap.configService().rebuildSnapshot();
-        bootstrap.controller().reloadFromConfig();
-        source.sendFeedback(() -> Translations.translate("command.veinminer.particles.color_set"), true);
-        return 1;
+        return withPlayer(source, player -> {
+            bootstrap.playerSettings().setParticleColor(player, red, green, blue);
+            bootstrap.playerSettings().saveAsync();
+            player.sendMessage(Translations.translate("command.veinminer.particles.color_set"), true);
+        });
     }
 
     private static int setDuration(ServerCommandSource source,
                                    Bootstrap bootstrap,
                                    int ticks) {
-        if (!ensurePermission(source, bootstrap,
-                VeinMinerController.Permissions.PARTICLES_MANAGE,
-                VeinMinerController.Permissions.PARTICLES_SETDURATION)) {
+        int maxTicks = PlayerSettingsStore.MAX_PARTICLE_DURATION_TICKS;
+        if (ticks > maxTicks) {
+            source.sendError(Translations.translate(
+                    "command.veinminer.particles.duration_too_high",
+                    ticks,
+                    maxTicks,
+                    maxTicks / 20));
             return 0;
         }
-        bootstrap.configService().general().particles().setDurationTicks(ticks);
-        bootstrap.configService().general().save();
-        bootstrap.configService().rebuildSnapshot();
-        bootstrap.controller().reloadFromConfig();
-        source.sendFeedback(() -> Translations.translate("command.veinminer.particles.duration_set", ticks), true);
-        return 1;
+
+        return withPlayer(source, player -> {
+            bootstrap.playerSettings().setParticleDurationTicks(player, ticks);
+            bootstrap.playerSettings().saveAsync();
+            player.sendMessage(Translations.translate("command.veinminer.particles.duration_set", ticks), true);
+        });
     }
 
-    private static int showHelp(ServerCommandSource source) {
-        source.sendFeedback(() -> Translations.translate("command.veinminer.help.particles"), false);
-        return 1;
+    private static int withPlayer(ServerCommandSource source, Consumer<ServerPlayerEntity> consumer) {
+        try {
+            ServerPlayerEntity player = source.getPlayer();
+            if (player == null) {
+                source.sendError(Translations.translate("command.veinminer.player_only"));
+                return 0;
+            }
+            consumer.accept(player);
+            return 1;
+        } catch (Exception ex) {
+            source.sendError(Text.literal(ex.getMessage() == null ? "Unknown error" : ex.getMessage()));
+            return 0;
+        }
     }
 
-    private static boolean ensurePermission(ServerCommandSource source,
-                                            Bootstrap bootstrap,
-                                            String... nodes) {
-        if (!(source.getEntity() instanceof ServerPlayerEntity player)) {
-            return PermissionCompat.hasPermissionLevel(source, 2);
-        }
-        for (String node : nodes) {
-            if (bootstrap.permissionService().hasPermission(player, node)) {
-                return true;
-            }
-            int dot = node.lastIndexOf('.');
-            if (dot > 0) {
-                String wildcard = node.substring(0, dot) + ".*";
-                if (bootstrap.permissionService().hasPermission(player, wildcard)) {
-                    return true;
-                }
-            }
-        }
-        if (bootstrap.permissionService().hasPermission(player, VeinMinerController.Permissions.RELOAD)) {
-            return true;
-        }
-        if (PermissionCompat.hasPermissionLevel(source, 2)) {
-            return true;
-        }
-        source.sendError(Translations.translate("message.veinminer.no_permission"));
-        return false;
-    }
 }

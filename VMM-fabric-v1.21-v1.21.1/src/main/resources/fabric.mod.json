@@ -17,9 +17,6 @@
     ],
     "client": [
       "com.sheath.veinminer.client.VeinminerClient"
-    ],
-    "fabric-datagen": [
-      "com.sheath.veinminer.datagen.VeinminerDataGenerator"
     ]
   },
   "mixins": [
