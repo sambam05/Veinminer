@@ -5,8 +5,6 @@ import com.sheath.veinminer.player.PlayerSettingsNbtCompat;
 import com.sheath.veinminer.player.PlayerSettingsNbtKeys;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.nbt.NbtCompound;
-import net.minecraft.storage.ReadView;
-import net.minecraft.storage.WriteView;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -23,7 +21,7 @@ public abstract class ServerPlayerEntityDataViewMixin implements PlayerSettingsD
             at = @At("TAIL"),
             require = 0
     )
-    private void veinminer$readPlayerData(ReadView readView, CallbackInfo ci) {
+    private void veinminer$readPlayerData(Object readView, CallbackInfo ci) {
         veinminer$playerData = PlayerSettingsNbtCompat.readCompoundFromReadView(readView, PlayerSettingsNbtKeys.ROOT).copy();
     }
 
@@ -32,7 +30,7 @@ public abstract class ServerPlayerEntityDataViewMixin implements PlayerSettingsD
             at = @At("TAIL"),
             require = 0
     )
-    private void veinminer$writePlayerData(WriteView writeView, CallbackInfo ci) {
+    private void veinminer$writePlayerData(Object writeView, CallbackInfo ci) {
         if (veinminer$playerData.isEmpty()) {
             return;
         }
