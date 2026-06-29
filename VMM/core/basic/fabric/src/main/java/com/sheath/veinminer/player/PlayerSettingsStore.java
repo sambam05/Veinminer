@@ -1,13 +1,20 @@
 package com.sheath.veinminer.player;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.sheath.veinminer.concurrent.TaskExecutor;
 import com.sheath.veinminer.core.ModConstants;
 import com.sheath.veinminer.util.Log;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.nbt.NbtCompound;
 import net.minecraft.server.network.ServerPlayerEntity;
 
 import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
@@ -15,23 +22,26 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Persists per-player settings directly in each player's NBT data.
+ * Persists per-player settings such as custom toggles and message preferences.
  */
 public final class PlayerSettingsStore {
 
     public static final int MAX_PARTICLE_DURATION_TICKS = 20 * 60;
 
-    private final Path legacyDataFile = FabricLoader.getInstance()
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private final Path dataFile = FabricLoader.getInstance()
             .getConfigDir()
             .resolve(ModConstants.CONFIG_DIRECTORY)
             .resolve("Players")
             .resolve("PlayerData.json");
 
     private final Map<UUID, PlayerSettings> settings = new ConcurrentHashMap<>();
-    @SuppressWarnings("unused")
     private final TaskExecutor executor;
+    private final Lock writeLock = new ReentrantLock();
 
     public PlayerSettingsStore(TaskExecutor executor) {
         this.executor = executor;
@@ -39,168 +49,176 @@ public final class PlayerSettingsStore {
 
     public void load() {
         settings.clear();
-        deleteLegacyJsonFile();
+        ensureParentDirectory();
+        if (!Files.exists(dataFile)) {
+            saveBlocking();
+            return;
+        }
+        try (Reader reader = Files.newBufferedReader(dataFile, StandardCharsets.UTF_8)) {
+            JsonElement element = JsonParser.parseReader(reader);
+            if (!element.isJsonObject()) {
+                Log.warn("Player data file did not contain a JSON object, resetting");
+                saveBlocking();
+                return;
+            }
+            JsonObject root = element.getAsJsonObject();
+            parseVeinminerStates(root.getAsJsonObject("veinminer"));
+            parseParticleStates(root.getAsJsonObject("particles"));
+            parseMessageStates(root.getAsJsonObject("messages"));
+            parseInputStates(root.getAsJsonObject("input"));
+            Log.info("Loaded player preference data for {} players", settings.size());
+        } catch (IOException | RuntimeException ex) {
+            Log.error("Failed to read player data file", ex);
+        }
     }
 
     public CompletableFuture<Void> saveAsync() {
-        // Data is already stored directly in player NBT and saved by the game.
-        return CompletableFuture.completedFuture(null);
+        return executor.submitAsync(() -> {
+            writeLock.lock();
+            try {
+                writeFile();
+            } finally {
+                writeLock.unlock();
+            }
+            return null;
+        });
     }
 
     public void saveBlocking() {
-        // Data is already stored directly in player NBT and saved by the game.
+        writeLock.lock();
+        try {
+            writeFile();
+        } finally {
+            writeLock.unlock();
+        }
     }
 
     public boolean isVeinminerEnabled(ServerPlayerEntity player) {
-        return settingsFor(player).veinminerEnabled;
+        return settingsFor(player.getUuid()).veinminerEnabled;
     }
 
     public void setVeinminerEnabled(ServerPlayerEntity player, boolean enabled) {
-        PlayerSettings settings = settingsFor(player);
-        settings.veinminerEnabled = enabled;
-        writeToNbt(player, settings);
+        settingsFor(player.getUuid()).veinminerEnabled = enabled;
     }
 
     public boolean isParticlesEnabled(ServerPlayerEntity player) {
-        return settingsFor(player).particlesEnabled;
+        return settingsFor(player.getUuid()).particlesEnabled;
     }
 
     public void setParticlesEnabled(ServerPlayerEntity player, boolean enabled) {
-        PlayerSettings settings = settingsFor(player);
-        settings.particlesEnabled = enabled;
-        writeToNbt(player, settings);
+        settingsFor(player.getUuid()).particlesEnabled = enabled;
     }
 
     public int particleDurationTicks(ServerPlayerEntity player) {
-        return settingsFor(player).particleDurationTicks;
+        return settingsFor(player.getUuid()).particleDurationTicks;
     }
 
     public void setParticleDurationTicks(ServerPlayerEntity player, int ticks) {
-        PlayerSettings settings = settingsFor(player);
-        settings.particleDurationTicks = clampDuration(ticks);
-        writeToNbt(player, settings);
+        settingsFor(player.getUuid()).particleDurationTicks = clampDuration(ticks);
     }
 
     public int particleRed(ServerPlayerEntity player) {
-        return settingsFor(player).particleRed;
+        return settingsFor(player.getUuid()).particleRed;
     }
 
     public int particleGreen(ServerPlayerEntity player) {
-        return settingsFor(player).particleGreen;
+        return settingsFor(player.getUuid()).particleGreen;
     }
 
     public int particleBlue(ServerPlayerEntity player) {
-        return settingsFor(player).particleBlue;
+        return settingsFor(player.getUuid()).particleBlue;
     }
 
     public void setParticleColor(ServerPlayerEntity player, int red, int green, int blue) {
-        PlayerSettings settings = settingsFor(player);
+        PlayerSettings settings = settingsFor(player.getUuid());
         settings.particleRed = clampColor(red);
         settings.particleGreen = clampColor(green);
         settings.particleBlue = clampColor(blue);
-        writeToNbt(player, settings);
     }
 
     public boolean isMessageEnabled(ServerPlayerEntity player, MessageType type) {
-        return settingsFor(player).messageEnabled(type);
+        return settingsFor(player.getUuid()).messageEnabled(type);
     }
 
     public void setMessageEnabled(ServerPlayerEntity player, MessageType type, boolean enabled) {
-        PlayerSettings settings = settingsFor(player);
-        settings.setMessage(type, enabled);
-        writeToNbt(player, settings);
+        settingsFor(player.getUuid()).setMessage(type, enabled);
     }
 
     public boolean useKeybind(ServerPlayerEntity player) {
-        return settingsFor(player).useKeybind;
+        return settingsFor(player.getUuid()).useKeybind;
     }
 
     public void setUseKeybind(ServerPlayerEntity player, boolean useKeybind) {
-        PlayerSettings settings = settingsFor(player);
-        settings.useKeybind = useKeybind;
-        writeToNbt(player, settings);
+        settingsFor(player.getUuid()).useKeybind = useKeybind;
     }
 
     public boolean keyToggleMode(ServerPlayerEntity player) {
-        return settingsFor(player).keyToggleMode;
+        return settingsFor(player.getUuid()).keyToggleMode;
     }
 
     public void setKeyToggleMode(ServerPlayerEntity player, boolean toggle) {
-        PlayerSettings settings = settingsFor(player);
-        settings.keyToggleMode = toggle;
-        writeToNbt(player, settings);
+        settingsFor(player.getUuid()).keyToggleMode = toggle;
     }
 
     public boolean isKeyToggleActive(ServerPlayerEntity player) {
-        return settingsFor(player).keyToggleActive;
+        return settingsFor(player.getUuid()).keyToggleActive;
     }
 
     public void setKeyToggleState(ServerPlayerEntity player, boolean active) {
-        PlayerSettings settings = settingsFor(player);
-        settings.keyToggleActive = active;
-        writeToNbt(player, settings);
+        settingsFor(player.getUuid()).keyToggleActive = active;
     }
 
     public boolean flipKeyToggleState(ServerPlayerEntity player) {
-        PlayerSettings settings = settingsFor(player);
+        PlayerSettings settings = settingsFor(player.getUuid());
         settings.keyToggleActive = !settings.keyToggleActive;
-        writeToNbt(player, settings);
         return settings.keyToggleActive;
     }
 
     public void resetKeyToggleState(ServerPlayerEntity player) {
-        PlayerSettings settings = settingsFor(player);
-        settings.keyToggleActive = false;
-        writeToNbt(player, settings);
+        settingsFor(player.getUuid()).keyToggleActive = false;
     }
 
     public boolean crouchToggleMode(ServerPlayerEntity player) {
-        return settingsFor(player).crouchToggleMode;
+        return settingsFor(player.getUuid()).crouchToggleMode;
     }
 
     public void setCrouchToggleMode(ServerPlayerEntity player, boolean toggle) {
-        PlayerSettings settings = settingsFor(player);
-        settings.crouchToggleMode = toggle;
-        writeToNbt(player, settings);
+        settingsFor(player.getUuid()).crouchToggleMode = toggle;
     }
 
     public boolean isCrouchToggleActive(ServerPlayerEntity player) {
-        return settingsFor(player).crouchToggleActive;
+        return settingsFor(player.getUuid()).crouchToggleActive;
     }
 
     public void setCrouchToggleState(ServerPlayerEntity player, boolean active) {
-        PlayerSettings settings = settingsFor(player);
-        settings.crouchToggleActive = active;
-        writeToNbt(player, settings);
+        settingsFor(player.getUuid()).crouchToggleActive = active;
     }
 
     public boolean updateCrouchToggleState(ServerPlayerEntity player, boolean sneaking) {
-        PlayerSettings settings = settingsFor(player);
+        PlayerSettings settings = settingsFor(player.getUuid());
         if (!settings.crouchToggleMode) {
             settings.lastCrouchInput = sneaking;
             return sneaking;
         }
         if (sneaking && !settings.lastCrouchInput) {
             settings.crouchToggleActive = !settings.crouchToggleActive;
-            writeToNbt(player, settings);
         }
         settings.lastCrouchInput = sneaking;
         return settings.crouchToggleActive;
     }
 
     public boolean lastCrouchInput(ServerPlayerEntity player) {
-        return settingsFor(player).lastCrouchInput;
+        return settingsFor(player.getUuid()).lastCrouchInput;
     }
 
     public void setLastCrouchInput(ServerPlayerEntity player, boolean value) {
-        settingsFor(player).lastCrouchInput = value;
+        settingsFor(player.getUuid()).lastCrouchInput = value;
     }
 
     public void resetCrouchToggleState(ServerPlayerEntity player) {
-        PlayerSettings settings = settingsFor(player);
+        PlayerSettings settings = settingsFor(player.getUuid());
         settings.crouchToggleActive = false;
         settings.lastCrouchInput = false;
-        writeToNbt(player, settings);
     }
 
     public void drop(ServerPlayerEntity player) {
@@ -208,85 +226,171 @@ public final class PlayerSettingsStore {
     }
 
     public void saveAndDrop(ServerPlayerEntity player) {
-        PlayerSettings value = settings.get(player.getUuid());
-        if (value != null) {
-            writeToNbt(player, value);
-        }
+        saveBlocking();
         drop(player);
     }
 
-    private PlayerSettings settingsFor(ServerPlayerEntity player) {
-        return settings.computeIfAbsent(player.getUuid(), __ -> readFromNbt(player));
+    private void parseVeinminerStates(JsonObject object) {
+        if (object == null) {
+            return;
+        }
+        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+            UUID uuid = parseUuid(entry.getKey());
+            if (uuid == null || !entry.getValue().isJsonPrimitive()) {
+                continue;
+            }
+            settingsFor(uuid).veinminerEnabled = entry.getValue().getAsBoolean();
+        }
     }
 
-    private PlayerSettings readFromNbt(ServerPlayerEntity player) {
-        NbtCompound root = rootData(player);
-        PlayerSettings value = new PlayerSettings();
+    private void parseParticleStates(JsonObject object) {
+        if (object == null) {
+            return;
+        }
+        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+            UUID uuid = parseUuid(entry.getKey());
+            if (uuid == null) {
+                continue;
+            }
+            PlayerSettings settings = settingsFor(uuid);
+            JsonElement value = entry.getValue();
+            if (value.isJsonPrimitive()) {
+                settings.particlesEnabled = value.getAsBoolean();
+                continue;
+            }
+            if (!value.isJsonObject()) {
+                continue;
+            }
+            JsonObject particleObject = value.getAsJsonObject();
+            settings.particlesEnabled = readBoolean(particleObject, "enabled", settings.particlesEnabled);
+            settings.particleDurationTicks = clampDuration(readInt(particleObject, "durationTicks", settings.particleDurationTicks));
+            settings.particleRed = clampColor(readInt(particleObject, "red", settings.particleRed));
+            settings.particleGreen = clampColor(readInt(particleObject, "green", settings.particleGreen));
+            settings.particleBlue = clampColor(readInt(particleObject, "blue", settings.particleBlue));
+        }
+    }
 
-        value.veinminerEnabled = readBoolean(root, PlayerSettingsNbtKeys.VEINMINER_ENABLED, true);
-        value.particlesEnabled = readBoolean(root, PlayerSettingsNbtKeys.PARTICLES_ENABLED, true);
+    private void parseMessageStates(JsonObject object) {
+        if (object == null) {
+            return;
+        }
+        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+            UUID uuid = parseUuid(entry.getKey());
+            if (uuid == null || !entry.getValue().isJsonObject()) {
+                continue;
+            }
+            PlayerSettings playerSettings = settingsFor(uuid);
+            JsonObject messageObject = entry.getValue().getAsJsonObject();
+            for (MessageType type : MessageType.values()) {
+                JsonElement value = messageObject.get(type.id());
+                if (value != null && value.isJsonPrimitive()) {
+                    playerSettings.setMessage(type, value.getAsBoolean());
+                }
+            }
+        }
+    }
 
-        NbtCompound particles = getCompound(root, PlayerSettingsNbtKeys.PARTICLES);
-        value.particleDurationTicks = clampDuration(readInt(particles, PlayerSettingsNbtKeys.PARTICLE_DURATION_TICKS, value.particleDurationTicks));
-        value.particleRed = clampColor(readInt(particles, PlayerSettingsNbtKeys.PARTICLE_RED, value.particleRed));
-        value.particleGreen = clampColor(readInt(particles, PlayerSettingsNbtKeys.PARTICLE_GREEN, value.particleGreen));
-        value.particleBlue = clampColor(readInt(particles, PlayerSettingsNbtKeys.PARTICLE_BLUE, value.particleBlue));
+    private void parseInputStates(JsonObject object) {
+        if (object == null) {
+            return;
+        }
+        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+            UUID uuid = parseUuid(entry.getKey());
+            if (uuid == null || !entry.getValue().isJsonObject()) {
+                continue;
+            }
+            PlayerSettings settings = settingsFor(uuid);
+            JsonObject input = entry.getValue().getAsJsonObject();
+            settings.useKeybind = readBoolean(input, "useKeybind", settings.useKeybind);
+            settings.keyToggleMode = readBoolean(input, "keyToggle", settings.keyToggleMode);
+            settings.keyToggleActive = readBoolean(input, "keyToggleState", settings.keyToggleActive);
+            settings.crouchToggleMode = readBoolean(input, "crouchToggle", settings.crouchToggleMode);
+            settings.crouchToggleActive = readBoolean(input, "crouchToggleState", settings.crouchToggleActive);
+        }
+    }
 
-        NbtCompound messages = getCompound(root, PlayerSettingsNbtKeys.MESSAGES);
-        for (MessageType type : MessageType.values()) {
-            value.setMessage(type, readBoolean(messages, type.id(), true));
+    private PlayerSettings settingsFor(UUID uuid) {
+        return settings.computeIfAbsent(uuid, __ -> new PlayerSettings());
+    }
+
+    private JsonObject buildSerializableJson() {
+        JsonObject root = new JsonObject();
+
+        JsonObject veinminerObject = new JsonObject();
+        JsonObject particlesObject = new JsonObject();
+        JsonObject messagesObject = new JsonObject();
+        JsonObject inputObject = new JsonObject();
+
+        for (Map.Entry<UUID, PlayerSettings> entry : settings.entrySet()) {
+            String key = entry.getKey().toString();
+            PlayerSettings value = entry.getValue();
+
+            veinminerObject.addProperty(key, value.veinminerEnabled);
+
+            JsonObject particleObject = new JsonObject();
+            particleObject.addProperty("enabled", value.particlesEnabled);
+            particleObject.addProperty("durationTicks", value.particleDurationTicks);
+            particleObject.addProperty("red", value.particleRed);
+            particleObject.addProperty("green", value.particleGreen);
+            particleObject.addProperty("blue", value.particleBlue);
+            particlesObject.add(key, particleObject);
+
+            JsonObject messageObject = new JsonObject();
+            for (MessageType type : MessageType.values()) {
+                messageObject.addProperty(type.id(), value.messageEnabled(type));
+            }
+            messagesObject.add(key, messageObject);
+
+            JsonObject input = new JsonObject();
+            input.addProperty("useKeybind", value.useKeybind);
+            input.addProperty("keyToggle", value.keyToggleMode);
+            input.addProperty("keyToggleState", value.keyToggleActive);
+            input.addProperty("crouchToggle", value.crouchToggleMode);
+            input.addProperty("crouchToggleState", value.crouchToggleActive);
+            inputObject.add(key, input);
         }
 
-        NbtCompound input = getCompound(root, PlayerSettingsNbtKeys.INPUT);
-        value.useKeybind = readBoolean(input, PlayerSettingsNbtKeys.USE_KEYBIND, false);
-        value.keyToggleMode = readBoolean(input, PlayerSettingsNbtKeys.KEY_TOGGLE, false);
-        value.keyToggleActive = readBoolean(input, PlayerSettingsNbtKeys.KEY_TOGGLE_STATE, false);
-        value.crouchToggleMode = readBoolean(input, PlayerSettingsNbtKeys.CROUCH_TOGGLE, false);
-        value.crouchToggleActive = readBoolean(input, PlayerSettingsNbtKeys.CROUCH_TOGGLE_STATE, false);
-        return value;
+        root.add("veinminer", veinminerObject);
+        root.add("particles", particlesObject);
+        root.add("messages", messagesObject);
+        root.add("input", inputObject);
+        return root;
     }
 
-    private void writeToNbt(ServerPlayerEntity player, PlayerSettings value) {
-        NbtCompound root = rootData(player);
-        root.putBoolean(PlayerSettingsNbtKeys.VEINMINER_ENABLED, value.veinminerEnabled);
-        root.putBoolean(PlayerSettingsNbtKeys.PARTICLES_ENABLED, value.particlesEnabled);
-
-        NbtCompound particles = new NbtCompound();
-        particles.putInt(PlayerSettingsNbtKeys.PARTICLE_DURATION_TICKS, value.particleDurationTicks);
-        particles.putInt(PlayerSettingsNbtKeys.PARTICLE_RED, value.particleRed);
-        particles.putInt(PlayerSettingsNbtKeys.PARTICLE_GREEN, value.particleGreen);
-        particles.putInt(PlayerSettingsNbtKeys.PARTICLE_BLUE, value.particleBlue);
-        root.put(PlayerSettingsNbtKeys.PARTICLES, particles);
-
-        NbtCompound messages = new NbtCompound();
-        for (MessageType type : MessageType.values()) {
-            messages.putBoolean(type.id(), value.messageEnabled(type));
+    private void writeFile() {
+        ensureParentDirectory();
+        try (Writer writer = Files.newBufferedWriter(dataFile, StandardCharsets.UTF_8)) {
+            GSON.toJson(buildSerializableJson(), writer);
+        } catch (IOException ex) {
+            Log.error("Failed to save player data", ex);
         }
-        root.put(PlayerSettingsNbtKeys.MESSAGES, messages);
-
-        NbtCompound input = new NbtCompound();
-        input.putBoolean(PlayerSettingsNbtKeys.USE_KEYBIND, value.useKeybind);
-        input.putBoolean(PlayerSettingsNbtKeys.KEY_TOGGLE, value.keyToggleMode);
-        input.putBoolean(PlayerSettingsNbtKeys.KEY_TOGGLE_STATE, value.keyToggleActive);
-        input.putBoolean(PlayerSettingsNbtKeys.CROUCH_TOGGLE, value.crouchToggleMode);
-        input.putBoolean(PlayerSettingsNbtKeys.CROUCH_TOGGLE_STATE, value.crouchToggleActive);
-        root.put(PlayerSettingsNbtKeys.INPUT, input);
     }
 
-    private NbtCompound rootData(ServerPlayerEntity player) {
-        return ((PlayerSettingsDataHolder) player).veinminer$getPlayerData();
+    private void ensureParentDirectory() {
+        try {
+            Files.createDirectories(dataFile.getParent());
+        } catch (IOException ex) {
+            Log.error("Failed to create player data directory", ex);
+        }
     }
 
-    private static boolean readBoolean(NbtCompound nbt, String key, boolean defaultValue) {
-        return PlayerSettingsNbtCompat.getBoolean(nbt, key, defaultValue);
+    private static boolean readBoolean(JsonObject object, String key, boolean defaultValue) {
+        JsonElement value = object.get(key);
+        return value != null && value.isJsonPrimitive() ? value.getAsBoolean() : defaultValue;
     }
 
-    private static int readInt(NbtCompound nbt, String key, int defaultValue) {
-        return PlayerSettingsNbtCompat.getInt(nbt, key, defaultValue);
+    private static int readInt(JsonObject object, String key, int defaultValue) {
+        JsonElement value = object.get(key);
+        return value != null && value.isJsonPrimitive() ? value.getAsInt() : defaultValue;
     }
 
-    private static NbtCompound getCompound(NbtCompound nbt, String key) {
-        return PlayerSettingsNbtCompat.getCompound(nbt, key);
+    private static UUID parseUuid(String raw) {
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            Log.warn("Invalid UUID '{}' in player data", raw);
+            return null;
+        }
     }
 
     private static int clampColor(int value) {
@@ -295,16 +399,6 @@ public final class PlayerSettingsStore {
 
     private static int clampDuration(int ticks) {
         return Math.max(1, Math.min(MAX_PARTICLE_DURATION_TICKS, ticks));
-    }
-
-    private void deleteLegacyJsonFile() {
-        try {
-            if (Files.deleteIfExists(legacyDataFile)) {
-                Log.info("Deleted deprecated player data file '{}'", legacyDataFile);
-            }
-        } catch (IOException ex) {
-            Log.warn("Failed to delete deprecated player data file '{}': {}", legacyDataFile, ex.getMessage());
-        }
     }
 
     private static final class PlayerSettings {

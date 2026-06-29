@@ -4,9 +4,7 @@
   "package": "com.sheath.veinminer.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
-    "ExperienceDroppingBlockAccessor",
-    "ServerPlayerEntityDataNbtMixin",
-    "ServerPlayerEntityCopyMixin"
+    "ExperienceDroppingBlockAccessor"
   ],
   "client": [
   ],
