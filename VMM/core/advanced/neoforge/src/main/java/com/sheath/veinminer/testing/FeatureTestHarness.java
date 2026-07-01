@@ -340,7 +340,9 @@ public final class FeatureTestHarness {
 
             int remaining = tool.getMaxDamage() - tool.getDamageValue();
 
-            int limit = (int) COMPUTE_BLOCK_CAP.invoke(controller, tool, remaining, reserve);
+            int limit = COMPUTE_BLOCK_CAP.getParameterCount() == 4
+                    ? (int) COMPUTE_BLOCK_CAP.invoke(controller, tool, remaining, reserve, true)
+                    : (int) COMPUTE_BLOCK_CAP.invoke(controller, tool, remaining, reserve);
 
             BlockState originState = level.getBlockState(origin);
 
@@ -851,24 +853,28 @@ public final class FeatureTestHarness {
         try {
 
             Method method = VeinMinerController.class.getDeclaredMethod(
-
                     "computeBlockCap",
-
                     ItemStack.class,
-
                     int.class,
-
-                    int.class
-
+                    int.class,
+                    boolean.class
             );
-
             method.setAccessible(true);
-
             return method;
-
-        } catch (ReflectiveOperationException ex) {
-
-            throw new IllegalStateException("Unable to access VeinMinerController#computeBlockCap", ex);
+        } catch (ReflectiveOperationException modernSignatureException) {
+            try {
+                Method method = VeinMinerController.class.getDeclaredMethod(
+                        "computeBlockCap",
+                        ItemStack.class,
+                        int.class,
+                        int.class
+                );
+                method.setAccessible(true);
+                return method;
+            } catch (ReflectiveOperationException legacySignatureException) {
+                legacySignatureException.addSuppressed(modernSignatureException);
+                throw new IllegalStateException("Unable to access VeinMinerController#computeBlockCap", legacySignatureException);
+            }
 
         }
 
