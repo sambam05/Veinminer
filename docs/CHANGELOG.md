@@ -32,3 +32,4 @@
 - Full NeoForge build matrix passed and produced 12 jars.
 - Runtime smoke testing confirmed Fabric settings persistence and basic behaviour on `1.20.4`, `1.20.6`, `1.21.1`, `1.21.4`, `1.21.8`, `1.21.10`, and `1.21.11`.
 - Runtime smoke testing confirmed NeoForge defaults, settings persistence, and clean launch on `1.21.1`, `1.21.4`, `1.21.8`, `1.21.10`, and `1.21.11`.
+- Runtime smoke testing confirmed `advanced.enabled = true` no longer blocks world load or command registration across the tested Fabric and NeoForge release matrix.
