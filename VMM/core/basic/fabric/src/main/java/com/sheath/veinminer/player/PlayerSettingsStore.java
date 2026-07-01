@@ -226,8 +226,18 @@ public final class PlayerSettingsStore {
     }
 
     public void saveAndDrop(ServerPlayerEntity player) {
+        resetSessionState(player);
         saveBlocking();
-        drop(player);
+    }
+
+    private void resetSessionState(ServerPlayerEntity player) {
+        PlayerSettings value = settings.get(player.getUuid());
+        if (value == null) {
+            return;
+        }
+        value.keyToggleActive = false;
+        value.crouchToggleActive = false;
+        value.lastCrouchInput = false;
     }
 
     private void parseVeinminerStates(JsonObject object) {
