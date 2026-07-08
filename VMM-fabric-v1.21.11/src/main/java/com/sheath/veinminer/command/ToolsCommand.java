@@ -33,14 +33,13 @@ final class ToolsCommand {
                                                          ClearConfirmationManager confirmations) {
         return CommandManager.literal("tools")
                 .requires(managePermission::test)
-                .then(CommandManager.literal("help").executes(ctx -> showHelp(ctx.getSource())))
                 .executes(ctx -> list(ctx.getSource(), bootstrap))
-                .then(CommandManager.literal("list").executes(ctx -> list(ctx.getSource(), bootstrap)))
                 .then(CommandManager.literal("add")
                         .then(CommandManager.argument("id", StringArgumentType.greedyString())
                                 .suggests(suggestAllTools())
                                 .executes(ctx -> add(ctx.getSource(), bootstrap,
                                         StringArgumentType.getString(ctx, "id")))))
+                .then(CommandManager.literal("list").executes(ctx -> list(ctx.getSource(), bootstrap)))
                 .then(CommandManager.literal("remove")
                         .then(CommandManager.argument("id", StringArgumentType.greedyString())
                                 .suggests(suggestConfiguredTools(bootstrap))
@@ -240,8 +239,4 @@ final class ToolsCommand {
         return null;
     }
 
-    private static int showHelp(ServerCommandSource source) {
-        source.sendFeedback(() -> Translations.translate("command.veinminer.help.tools"), false);
-        return 1;
-    }
 }

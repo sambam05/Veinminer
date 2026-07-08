@@ -1,0 +1,167 @@
+package com.sheath.veinminer.util;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import net.minecraft.network.chat.Component;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
+public final class Translations {
+
+    private static final Map<String, String> FALLBACKS = loadFallbacks();
+
+    private static final String EMBEDDED_EN_US = """
+{
+    "key.veinminer.toggle": "Toggle Veinminer",
+    "key.veinminer.activate": "Activate Veinminer",
+    "category.veinminer": "Veinminer",
+    "key.categories.veinminermod.veinminer": "Veinminer",
+    "command.veinminer.enabled": "enabled",
+    "command.veinminer.disabled": "disabled",
+    "command.veinminer.list_entry": "- %s",
+    "command.veinminer.block_list_type.global_whitelist": "global whitelist",
+    "command.veinminer.block_list_type.per_tool_whitelist": "per-tool whitelist",
+    "command.veinminer.block_list_type.global_blacklist": "global blacklist",
+    "command.veinminer.block_list_type.per_tool_blacklist": "per-tool blacklist",
+    "command.veinminer.block_list_type.whitelist": "whitelist",
+    "command.veinminer.block_list_type.blacklist": "blacklist",
+    "command.veinminer.blockpertool.block_added": "Block ID %s added to the %s for tool %s.",
+    "command.veinminer.blockpertool.block_exists": "Block ID %s is already in the %s.",
+    "command.veinminer.blockpertool.block_removed": "Block ID %s removed from the %s for tool %s.",
+    "command.veinminer.blockpertool.block_not_found": "Block ID %s is not present in the %s for tool %s.",
+    "command.veinminer.blockpertool.no_blocks": "No entries in the %s for tool %s.",
+    "command.veinminer.blockpertool.blocks_for_tool": "%s entries for tool %s:",
+    "command.veinminer.blockpertool.tool_exists": "Tool ID %s already exists.",
+    "command.veinminer.blockpertool.tool_added": "Tool ID %s added.",
+    "command.veinminer.blockpertool.tool_removed": "Tool ID %s removed.",
+    "command.veinminer.blockpertool.tool_not_found": "Tool ID %s not found.",
+    "command.veinminer.blockpertool.no_tools": "No tools found.",
+    "command.veinminer.blockpertool.tools_header": "Tools:",
+    "command.veinminer.blockpertool.not_enabled": "Per-tool block lists are disabled. Enable them with /vmadvanced settings blockpertool when advanced mode is on.",
+    "command.veinminer.blockpertool.blocks_cleared": "Cleared all %s entries for tool %s.",
+    "command.veinminer.blockpertool.tools_cleared": "Cleared all per-tool %s entries.",
+    "command.veinminer.blocks.added": "Block ID %s added to the %s.",
+    "command.veinminer.blocks.exists": "Block ID %s is already in the %s.",
+    "command.veinminer.blocks.removed": "Block ID %s removed from the %s.",
+    "command.veinminer.blocks.not_found": "Block ID %s is not in the %s.",
+    "command.veinminer.blocks.none": "No entries in the %s.",
+    "command.veinminer.blocks.header": "%s entries:",
+    "command.veinminer.blocks.per_tool_hint": "Per-tool block list mode is active; this global list is currently ignored.",
+    "command.veinminer.blocks.cleared": "Cleared all entries from the %s.",
+    "command.veinminer.tools.added": "Tool ID %s added to Veinminer.",
+    "command.veinminer.tools.exists": "Tool ID %s is already in the list.",
+    "command.veinminer.tools.removed": "Tool ID %s removed from Veinminer.",
+    "command.veinminer.tools.not_found": "Tool ID %s is not in the list.",
+    "command.veinminer.tools.none": "No tools in the list.",
+    "command.veinminer.tools.header": "Allowed tools:",
+    "command.veinminer.tools.cleared": "Cleared all allowed tools.",
+    "command.veinminer.settings.blockpertool": "BlockPerTool is now %s. The block list mode is using %s.",
+    "command.veinminer.settings.cooldown_time_set": "Cooldown time set to %s seconds",
+    "command.veinminer.settings.cooldown_state": "Cooldown is now %s",
+    "command.veinminer.settings.exhaustion_state": "Hunger exhaustion is now %s",
+    "command.veinminer.settings.exhaustion_scale_set": "Hunger exhaustion scale set to %s (1.0 = vanilla)",
+    "command.veinminer.settings.luckperms_state": "LuckPerms integration %s",
+    "command.veinminer.settings.max_blocks_set": "Max blocks set to %s",
+    "command.veinminer.settings.blocklistmode_set": "Block list mode set to %s.",
+    "command.veinminer.settings.blocklistmode_invalid": "Unknown block list mode '%s'. Use whitelist or blacklist.",
+    "command.veinminer.settings.show.max_blocks": "Max Blocks: %s",
+    "command.veinminer.settings.show.cooldown_enabled": "Cooldown Enabled: %s",
+    "command.veinminer.settings.show.cooldown_time": "Cooldown Time: %s seconds",
+    "command.veinminer.settings.show.block_list_mode": "Block List Mode: %s",
+    "command.veinminer.settings.show.exhaustion_enabled": "Hunger Exhaustion Enabled: %s",
+    "command.veinminer.settings.show.exhaustion_scale": "Hunger Exhaustion Scale: %s",
+    "command.veinminer.activation.input": "Activation input set to %s.",
+    "command.veinminer.activation.input.keybind": "keybind",
+    "command.veinminer.activation.input.shift": "shift",
+    "command.veinminer.activation.keybind.client_required": "The client mod is required to use keybind activation commands.",
+    "command.veinminer.activation.mode": "Activation mode set to %s.",
+    "command.veinminer.activation.mode.hold": "hold",
+    "command.veinminer.activation.mode.toggle": "toggle",
+    "command.veinminer.toggle": "Veinminer is now %s.",
+    "command.veinminer.player_only": "This command can only be used by players.",
+    "command.veinminer.particles_player_toggle": "Particles is now %s for you.",
+    "command.veinminer.togglemessage": "%s messages are now %s for you.",
+    "command.veinminer.reload": "Veinminer config reloaded.",
+    "command.veinminer.reload_failed": "Failed to reload config %s at line %s: %s",
+    "command.veinminer.confirm.prompt": "Please run /vmadmin confirm to proceed with this clear. If you do not want to clear, wait 10 seconds or run /vmadmin cancel.",
+    "command.veinminer.confirm.none": "There is no pending action to confirm.",
+    "command.veinminer.confirm.cancelled": "Pending action cancelled.",
+    "command.veinminer.confirm.expired": "Pending action timed out.",
+    "command.veinminer.help": "Use /veinminer help <topic>. Topics: toggle, reload, activation, togglemessages, particles.",
+    "command.veinminer.help.admin": "Use /vmadmin help <topic>. Topics: blocks, tools, settings, reload, confirm, cancel.",
+    "command.veinminer.help.advanced": "Use /vmadvanced help <topic>. Topics: blockpertool, settings, test, confirm, cancel. Available only when advanced.enabled is true.",
+    "command.veinminer.help.unknown_topic": "Unknown help topic '%s'. Try /%s help.",
+    "command.veinminer.help.toggle": "/veinminer toggle - Toggle Veinminer for yourself.",
+    "command.veinminer.help.blocks": "/vmadmin blocks add|list|remove|clear <id|#tag> - Manage the global block list. Example: /vmadmin blocks add minecraft:diamond_ore",
+    "command.veinminer.help.blockpertool": "/vmadvanced blockpertool blocks <tool|#tag|hand> add|list|remove|clear <id|#tag> - Manage per-tool lists when per-tool blockListMode is active. /vmadvanced blockpertool tool add|list|remove|clear - Manage tool entries.",
+    "command.veinminer.help.tools": "/vmadmin tools add|list|remove|clear <id|#tag|hand> - Control which tools can veinmine.",
+    "command.veinminer.help.settings": "/vmadmin settings blocklistmode whitelist|blacklist | maxblocks <n> | cooldown enable|disable|set <seconds> | exhaustion enable|disable|scale <value> | luckperms enable|disable. /vmadvanced settings blockpertool toggles per-tool list mode when advanced mode is enabled.",
+    "command.veinminer.help.activation": "/veinminer activation mode hold|toggle | keybind - Set your hold/toggle behavior and toggle input between shift and keybind.",
+    "command.veinminer.help.togglemessages": "/veinminer togglemessages <permission|disabled|cooldown|durability> - Toggle your specific chat notifications.",
+    "command.veinminer.help.particles": "/veinminer particles toggle | setcolor <r g b> | setduration <ticks> - Toggle or configure your own outline particles.",
+    "command.veinminer.help.admin_particles": "/veinminer particles setcolor <r g b> | setduration <ticks> - Configure your own outline color and duration.",
+    "command.veinminer.help.reload": "/veinminer reload or /vmadmin reload - Reload configs from disk.",
+    "command.veinminer.help.test": "/vmadvanced test - Run the feature test harness.",
+    "command.veinminer.help.confirm": "/vmadmin confirm - Confirm a pending destructive admin action.",
+    "command.veinminer.help.cancel": "/vmadmin cancel - Cancel a pending destructive admin action.",
+    "command.veinminer.particles.toggle": "Particles toggled %s.",
+    "command.veinminer.particles.color_set": "Particle color set",
+    "command.veinminer.particles.duration_set": "Particle duration set to %s ticks.",
+    "command.veinminer.particles.duration_too_high": "Duration %s ticks is too high. Maximum is %s ticks (%s seconds).",
+    "command.veinminer.test.busy": "A feature test run is already in progress.",
+    "command.veinminer.test.starting": "Starting Veinminer feature test harness...",
+    "command.veinminer.test.running": "Executing scripted checks...",
+    "command.veinminer.test.summary": "Feature test complete: %s/%s steps passed.",
+    "command.veinminer.test.step.pass": "- %s",
+    "command.veinminer.test.step.fail": "x %s - %s",
+    "command.veinminer.test.player_only": "Feature tests can only be run by an in-game player.",
+    "message.veinminer.no_permission": "You do not have permission to use Veinminer!",
+    "message.veinminer.disabled": "Veinminer is disabled. Use /veinminer toggle to enable it.",
+    "message.veinminer.cooldown": "Veinminer is on cooldown! %s seconds remaining.",
+    "message.veinminer.low_durability": "Tool durability too low for Veinminer!",
+    "message.veinminer.limit_durability": "Found %s blocks, only broke %s due to low durability."
+}
+
+""";
+
+    private Translations() {}
+
+    public static Component translate(String key, Object... args) {
+        String fallback = FALLBACKS.getOrDefault(key, key);
+        return Component.translatableWithFallback(key, fallback, args);
+    }
+
+    private static Map<String, String> loadFallbacks() {
+        Map<String, String> resourceFallbacks = readJson(Translations.class.getResourceAsStream("/assets/veinminermod/lang/en_us.json"));
+        if (!resourceFallbacks.isEmpty()) {
+            return resourceFallbacks;
+        }
+        Map<String, String> embeddedFallbacks = readJson(new ByteArrayInputStream(EMBEDDED_EN_US.getBytes(StandardCharsets.UTF_8)));
+        return Collections.unmodifiableMap(embeddedFallbacks);
+    }
+
+    private static Map<String, String> readJson(InputStream stream) {
+        if (stream == null) {
+            return Map.of();
+        }
+        try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
+            JsonObject json = new Gson().fromJson(reader, JsonObject.class);
+            Map<String, String> map = new HashMap<>(json.size());
+            for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
+                map.put(entry.getKey(), entry.getValue().getAsString());
+            }
+            return map.isEmpty() ? Map.of() : Collections.unmodifiableMap(map);
+        } catch (Exception ex) {
+            return Map.of();
+        }
+    }
+}
+
+

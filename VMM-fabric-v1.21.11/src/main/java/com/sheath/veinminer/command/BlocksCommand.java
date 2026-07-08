@@ -38,14 +38,13 @@ final class BlocksCommand {
                                                          ClearConfirmationManager confirmations) {
         return CommandManager.literal("blocks")
                 .requires(managePermission::test)
-                .then(CommandManager.literal("help").executes(ctx -> showHelp(ctx.getSource())))
                 .executes(ctx -> list(ctx.getSource(), bootstrap))
-                .then(CommandManager.literal("list").executes(ctx -> list(ctx.getSource(), bootstrap)))
                 .then(CommandManager.literal("add")
                         .then(CommandManager.argument("id", StringArgumentType.greedyString())
                                 .suggests(suggestRegistryBlocks())
                                 .executes(ctx -> add(ctx.getSource(), bootstrap,
                                         StringArgumentType.getString(ctx, "id")))))
+                .then(CommandManager.literal("list").executes(ctx -> list(ctx.getSource(), bootstrap)))
                 .then(CommandManager.literal("remove")
                         .then(CommandManager.argument("id", StringArgumentType.greedyString())
                                 .suggests(suggestConfiguredBlocks(bootstrap))
@@ -281,8 +280,4 @@ final class BlocksCommand {
         return null;
     }
 
-    private static int showHelp(ServerCommandSource source) {
-        source.sendFeedback(() -> Translations.translate("command.veinminer.help.blocks"), false);
-        return 1;
-    }
 }

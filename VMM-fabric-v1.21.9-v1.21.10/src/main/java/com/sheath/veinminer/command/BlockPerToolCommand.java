@@ -37,7 +37,6 @@ final class BlockPerToolCommand {
                                                          ClearConfirmationManager confirmations) {
         return CommandManager.literal("blockpertool")
                 .requires(managePermission::test)
-                .then(CommandManager.literal("help").executes(ctx -> showHelp(ctx.getSource())))
                 .then(buildBlocksNode(bootstrap, managePermission, confirmations))
                 .then(buildToolNode(bootstrap, managePermission, confirmations));
     }
@@ -57,6 +56,11 @@ final class BlockPerToolCommand {
                                                 bootstrap,
                                                 StringArgumentType.getString(ctx, "tool"),
                                                 StringArgumentType.getString(ctx, "block")))))
+                        .then(CommandManager.literal("list")
+                                .executes(ctx -> listBlocks(
+                                        ctx.getSource(),
+                                        bootstrap,
+                                        StringArgumentType.getString(ctx, "tool"))))
                         .then(CommandManager.literal("remove")
                                 .requires(managePermission::test)
                                 .then(CommandManager.argument("block", StringArgumentType.greedyString())
@@ -66,11 +70,6 @@ final class BlockPerToolCommand {
                                                 bootstrap,
                                         StringArgumentType.getString(ctx, "tool"),
                                         StringArgumentType.getString(ctx, "block")))))
-                        .then(CommandManager.literal("list")
-                                .executes(ctx -> listBlocks(
-                                        ctx.getSource(),
-                                        bootstrap,
-                                        StringArgumentType.getString(ctx, "tool"))))
                         .then(CommandManager.literal("clear")
                                 .requires(managePermission::test)
                                 .executes(ctx -> requestClearBlocks(
@@ -92,6 +91,8 @@ final class BlockPerToolCommand {
                                                 ctx.getSource(),
                                                 bootstrap,
                                                 StringArgumentType.getString(ctx, "tool")))))
+                .then(CommandManager.literal("list")
+                        .executes(ctx -> listTools(ctx.getSource(), bootstrap)))
                 .then(CommandManager.literal("remove")
                         .requires(managePermission::test)
                         .then(CommandManager.argument("tool", StringArgumentType.greedyString())
@@ -100,8 +101,6 @@ final class BlockPerToolCommand {
                                         ctx.getSource(),
                                         bootstrap,
                                         StringArgumentType.getString(ctx, "tool")))))
-                .then(CommandManager.literal("list")
-                        .executes(ctx -> listTools(ctx.getSource(), bootstrap)))
                 .then(CommandManager.literal("clear")
                         .requires(managePermission::test)
                         .executes(ctx -> requestClearAllTools(ctx.getSource(), bootstrap, confirmations)));
@@ -463,8 +462,4 @@ final class BlockPerToolCommand {
         return false;
     }
 
-    private static int showHelp(ServerCommandSource source) {
-        source.sendFeedback(() -> Translations.translate("command.veinminer.help.blockpertool"), false);
-        return 1;
-    }
 }

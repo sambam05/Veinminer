@@ -1,12 +1,15 @@
 # Build outputs
+artifacts/
 dist-fabric/
 dist-neoforge/
 build-logs/
 crashreports/
 **/build/
 **/.gradle/
+**/.gradle_local_build/
 **/.gradle_user*/
 .gradle/
+.release-build-output/
 .tmp/
 
 # IDE/Editors
@@ -34,3 +37,8 @@ Thumbs.db
 *.swp
 *.zip
 *.tar.gz
+docs/repo/repo-tree-full.txt
+
+# Local release secrets
+release-secrets.env
+secrets/

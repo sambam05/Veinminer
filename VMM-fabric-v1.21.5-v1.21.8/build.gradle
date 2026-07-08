@@ -84,16 +84,18 @@ dependencies {
     compileOnly 'net.luckperms:api:5.4'
 }
 
+def resourceExpandProps = [
+        version: project.version,
+        minecraft_version: project.minecraft_version,
+        loader_version: project.loader_version
+]
+
 processResources {
-    inputs.property "version", project.version
-    inputs.property "minecraft_version", project.minecraft_version
-    inputs.property "loader_version", project.loader_version
-    filteringCharset "UTF-8"
+    inputs.properties(resourceExpandProps)
+    filteringCharset = "UTF-8"
 
     filesMatching("fabric.mod.json") {
-        expand "version": project.version,
-                "minecraft_version": project.minecraft_version,
-                "loader_version": project.loader_version
+        expand(resourceExpandProps)
     }
 }
 
@@ -166,4 +168,12 @@ tasks.register("buildAllSupported") {
     description = "Builds the mod for all supported Minecraft versions."
     dependsOn buildTasks
 }
+// Shared legacy sources to reduce duplicated maintenance.
+sourceSets.main.java.srcDir '../VMM/core/basic/fabric/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/visual/fabric/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/advanced/fabric/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/commands/fabric/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/config/fabric/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/util/fabric/src/main/java'
+sourceSets.main.java.exclude '**/ServerPlayerEntityDataNbtMixin.java'
 

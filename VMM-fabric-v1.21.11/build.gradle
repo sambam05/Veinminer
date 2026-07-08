@@ -102,18 +102,24 @@ dependencies {
     include 'com.google.code.gson:gson:2.11.0'
 
     compileOnly 'net.luckperms:api:5.4'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
 }
 
+def resourceExpandProps = [
+        version: project.version,
+        minecraft_version: project.minecraft_version,
+        loader_version: project.loader_version
+]
+
 processResources {
-    inputs.property "version", project.version
-    inputs.property "minecraft_version", project.minecraft_version
-    inputs.property "loader_version", project.loader_version
-    filteringCharset "UTF-8"
+    inputs.properties(resourceExpandProps)
+    filteringCharset = "UTF-8"
 
     filesMatching("fabric.mod.json") {
-        expand "version": project.version,
-                "minecraft_version": project.minecraft_version,
-                "loader_version": project.loader_version
+        expand(resourceExpandProps)
     }
 }
 
@@ -127,6 +133,10 @@ tasks.withType(JavaCompile).configureEach {
     if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
         it.options.release.set(targetJavaVersion)
     }
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
 }
 
 java {
@@ -187,3 +197,13 @@ tasks.register("buildAllSupported") {
     dependsOn buildTasks
 }
 
+
+
+// Shared core sources
+sourceSets.main.java.srcDir '../VMM/core/basic/fabric/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/visual/fabric/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/advanced/fabric/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/commands/fabric/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/config/fabric/src/main/java'
+sourceSets.main.java.srcDir '../VMM/core/util/fabric/src/main/java'
+sourceSets.main.java.exclude '**/ServerPlayerEntityDataNbtMixin.java'
